@@ -1,12 +1,8 @@
 // El calendario semanal: qué se publica cada día.
 //
-// Default: el episodio sale el DOMINGO y la semana siguiente lleva un clip por
-// día de lunes a sábado. Se pisa con WEEKLY_PLAN="1,2,3,4,5,6" (días ISO,
-// 1=lunes … 7=domingo) y PUBLISH_TIME="21:00".
-//
-// "Semana extendida" (por episodio): cuando NO hay episodio el domingo
-// siguiente, las piezas se estiran a 14 días (día por medio) y se suman clips
-// de los tramos que quedaron sin usar.
+// Default: la semana de un video arranca el domingo en que sale y lleva un
+// clip por día de lunes a sábado. Se pisa con WEEKLY_PLAN="1,2,3,4,5,6" (días
+// ISO, 1=lunes … 7=domingo) y PUBLISH_TIME="21:00".
 
 import { PUBLISH_TIME as CONFIG_PUBLISH_TIME, TIMEZONE } from "@/lib/config";
 import type { Item, Platform, State } from "@/lib/store";
@@ -72,52 +68,43 @@ export function weekStart(date: string): string {
  * Devuelve las próximas `count` fechas libres a partir de `from` (INCLUSIVE),
  * respetando el plan semanal y saltando las fechas ya ocupadas por otro ítem
  * (un día lleva UNA pieza).
- *
- * `stretch`: semana extendida — usa día por medio de los días del plan, así
- * las mismas piezas cubren dos semanas.
  */
 export function nextFreeSlots(
   state: State,
   kind: PieceKind,
   from: string,
   count: number,
-  opts: { stretch?: boolean; ignoreItemIds?: Set<string> } = {},
+  opts: { ignoreItemIds?: Set<string> } = {},
 ): string[] {
   const plan = weeklyPlan().filter((s) => s.kind === kind);
   if (!plan.length || count <= 0) return [];
   const taken = new Set(state.items.filter((i) => !opts.ignoreItemIds?.has(i.id)).map((i) => i.date));
   const out: string[] = [];
   let date = addDays(from, -1);
-  let skipNext = false;
   // Tope de 26 semanas para no iterar infinito si el plan está vacío para ese tipo.
   for (let i = 0; i < 26 * 7 && out.length < count; i++) {
     date = addDays(date, 1);
     if (!plan.some((s) => s.dow === isoDow(date))) continue;
     if (taken.has(date)) continue;
-    if (opts.stretch && skipNext) {
-      skipNext = false;
-      continue;
-    }
     taken.add(date);
     out.push(date);
-    skipNext = true;
   }
   return out;
 }
 
 /**
- * La SEMANA DE UN EPISODIO: arranca el domingo en que sale y termina el sábado.
- * Cada episodio es dueño de su semana; si no, los episodios se apilan en fila y
+ * La SEMANA DE UN VIDEO: arranca el domingo en que sale y termina el sábado.
+ * Cada video es dueño de su semana; si no, los videos se apilan en fila y
  * el nuevo cae dos semanas después.
  */
-export function episodeWeekStart(publishedAt: string, today: string): string {
+export function videoWeekStart(publishedAt: string, today: string): string {
   const pub = localDate(new Date(publishedAt));
   const domingo = addDays(pub, isoDow(pub) === 7 ? 0 : -isoDow(pub));
   const domingoActual = addDays(today, isoDow(today) === 7 ? 0 : -isoDow(today));
   return domingo >= domingoActual ? domingo : domingoActual;
 }
 
-/** Los días de la semana del episodio que todavía no pasaron. */
+/** Los días de la semana del video que todavía no pasaron. */
 export function weekSlots(state: State, weekSunday: string, kind: PieceKind, today: string, opts: { ignoreItemIds?: Set<string> } = {}): string[] {
   const plan = weeklyPlan().filter((s) => s.kind === kind);
   const taken = new Set(state.items.filter((i) => !opts.ignoreItemIds?.has(i.id)).map((i) => i.date));
@@ -133,14 +120,14 @@ export function weekSlots(state: State, weekSunday: string, kind: PieceKind, tod
 }
 
 /**
- * La semana es del episodio. Lo que ocupa esos días (piezas de otro episodio,
+ * La semana es del video. Lo que ocupa esos días (piezas de otro video,
  * recicladas o no) le cede el lugar: no se borra nada, se corre una semana al
  * mismo día de la semana siguiente que esté libre. Se mueve todo lo que no esté
  * publicado, incluso lo trabado en "drafting". Devuelve las piezas movidas.
  */
-export function cederLaSemana(state: State, episodeId: string, weekSunday: string): Item[] {
+export function cederLaSemana(state: State, videoId: string, weekSunday: string): Item[] {
   const desplazadas = state.items.filter(
-    (i) => i.episodeId !== episodeId && i.status !== "published" && i.date >= weekSunday && i.date <= addDays(weekSunday, 6),
+    (i) => i.videoId !== videoId && i.status !== "published" && i.date >= weekSunday && i.date <= addDays(weekSunday, 6),
   );
   if (!desplazadas.length) return [];
   const ocupadas = new Set(state.items.map((i) => i.date));
@@ -161,7 +148,7 @@ export function cederLaSemana(state: State, episodeId: string, weekSunday: strin
  */
 export function faltantesDeLaSemana(
   state: State,
-  episodeId: string,
+  videoId: string,
   weekSunday: string,
   today: string,
   pedido: number,
@@ -169,8 +156,8 @@ export function faltantesDeLaSemana(
 ): { faltan: string; porQue: string } | null {
   if (conseguido >= pedido) return null;
   const tomados = state.items
-    .filter((i) => i.episodeId !== episodeId && i.date >= weekSunday && i.date <= addDays(weekSunday, 6))
-    .map((i) => `${i.date} → ${i.kind} de otro episodio (${i.status})`);
+    .filter((i) => i.videoId !== videoId && i.date >= weekSunday && i.date <= addDays(weekSunday, 6))
+    .map((i) => `${i.date} → ${i.kind} de otro video (${i.status})`);
   const pasados = Array.from({ length: 7 }, (_, i) => addDays(weekSunday, i)).filter((d) => d < today);
   const porQue = [
     tomados.length ? `días tomados: ${tomados.join("; ")}` : "",

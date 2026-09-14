@@ -3,7 +3,7 @@
 // el código, no el modelo: así el CTA y el formato nunca varían.
 
 import { BANNED_HASHTAGS, BANNED_HASHTAGS_TIKTOK, COPY_INSTRUCTION, type Extraction } from "@/lib/engine";
-import { BRAND_HASHTAG, CTA_TEXT } from "@/lib/config";
+import { BRAND_HASHTAG, CREATOR_NAME, CTA_TEXT } from "@/lib/config";
 import { normalize, openaiJson } from "@/lib/openai";
 
 export type CopyPieces = {
@@ -17,8 +17,6 @@ export type CopyPieces = {
   hashtags_tiktok: string[];
   /** Titular que el editor quema en pantalla en los primeros segundos del clip. */
   hook_edicion: string;
-  /** Cómo se presenta al invitado, sin su nombre. */
-  credencial: string;
 };
 
 // Structured Outputs: el modelo no puede devolver otra forma. `strict` exige que
@@ -27,7 +25,7 @@ export type CopyPieces = {
 const SCHEMA = {
   type: "object",
   additionalProperties: false,
-  required: ["molde", "claim", "cita_textual", "emoji", "hashtags", "hashtags_tiktok", "hook_edicion", "credencial"],
+  required: ["molde", "claim", "cita_textual", "emoji", "hashtags", "hashtags_tiktok", "hook_edicion"],
   properties: {
     molde: { type: "string", enum: ["cita", "revelacion", "pregunta"] },
     claim: { type: "string" },
@@ -36,7 +34,6 @@ const SCHEMA = {
     hashtags: { type: "array", items: { type: "string" }, minItems: 5, maxItems: 5 },
     hashtags_tiktok: { type: "array", items: { type: "string" }, minItems: 5, maxItems: 5 },
     hook_edicion: { type: "string", description: "Titular en pantalla: 3-7 palabras, sin punto final, dice el payoff del clip." },
-    credencial: { type: "string", description: "2-5 palabras, sin el nombre del invitado. Vacío si no hay dato." },
   },
 } as const;
 
@@ -60,10 +57,10 @@ export function quoteIsReal(quote: string, transcript: string): boolean {
 export type CopyProblem = string;
 
 // El titular tiene que ser un claim (verbo, dígito o predicado), nunca el nombre
-// del invitado, su ocupación ni una palabra suelta. Pedirlo en el prompt no
+// de quien habla, su ocupación ni una palabra suelta. Pedirlo en el prompt no
 // alcanza: es una compuerta en código.
 const ROLES =
-  /^(fundadora?|cofundadora?|ceo|creadora?|especialista|nutricionista|m[eé]dic[oa]|psic[oó]log[oa]|psiquiatra|emprendedora?|directora?|comunicadora?|influencer|periodista|abogad[oa]|entrenadora?|coach|autora?|escritora?|inversora?|empresari[oa]|conductora?|host|streamer|youtuber|tiktoker|consultora?|ingenier[oa]|economista|contadora?|dueñ[oa]|soci[oa]|gerente|productora?|actor|actriz|cantante|deportista|jugadora?|campe[oó]na?|profesora?|docente|investigadora?|cient[ií]fic[oa]|biólog[oa]|kinesi[oó]log[oa]|filósof[oa]|historiadora?|arquitect[oa]|diseñadora?|programadora?|desarrolladora?|fot[oó]graf[oa]|chef|cociner[oa])$/;
+  /^(fundadora?|cofundadora?|ceo|creadora?|especialista|nutricionista|m[eé]dic[oa]|psic[oó]log[oa]|psiquiatra|emprendedora?|directora?|comunicadora?|influencer|periodista|abogad[oa]|entrenadora?|coach|autora?|escritora?|inversora?|empresari[oa]|conductora?|host|streamer|youtuber|tiktoker|consultora?|ingenier[oa]|economista|contadora?|dueñ[oa]|soci[oa]|gerente|productora?|actor|actriz|cantante|deportista|jugadora?|campe[oó]na?|profesora?|docente|investigadora?|cient[ií]fic[oa]|biólog[oa]|kinesi[oó]log[oa]|filósof[oa]|historiadora?|arquitect[oa]|diseñadora?|programadora?|desarrolladora?|fot[oó]graf[oa]|chef|cociner[oa]|estudiante|viajer[oa]|vlogger)$/;
 const CONECTORES = new Set(["con", "el", "la", "los", "las", "de", "del", "y", "e", "en", "al"]);
 
 const tokens = (s: string) =>
@@ -75,29 +72,27 @@ const tokens = (s: string) =>
     .split(/\s+/)
     .filter(Boolean);
 
-/** Devuelve el problema si hook_edicion no es un claim (nombre, credencial o palabra suelta); null si pasa. */
-export function hookNoEsClaim(hook: string, invitado?: string, credencial?: string): string | null {
+/** Devuelve el problema si hook_edicion no es un claim (nombre, ocupación o palabra suelta); null si pasa. */
+export function hookNoEsClaim(hook: string, nombre?: string): string | null {
   const palabras = hook.trim().split(/\s+/).filter(Boolean);
   if (palabras.length === 1) {
     return `hook_edicion es una sola palabra ("${hook.trim()}"): eso no es un titular. El frame 0 lleva un claim de 3 a 7 palabras con verbo, dígito o predicado.`;
   }
   const contenido = tokens(hook).filter((w) => !CONECTORES.has(w));
   if (!contenido.length) return null; // lo agarra la regla de 3-7 palabras
-  const nombre = new Set(tokens(invitado ?? ""));
-  if (nombre.size && contenido.every((w) => nombre.has(w))) {
-    return `hook_edicion es sólo el nombre del invitado ("${hook.trim()}"): el nombre va aparte, no en el titular. Escribí lo que dice o hizo: verbo, dígito o predicado.`;
+  const partesNombre = new Set(tokens(nombre ?? ""));
+  if (partesNombre.size && contenido.every((w) => partesNombre.has(w))) {
+    return `hook_edicion es sólo el nombre de quien habla ("${hook.trim()}"): el nombre no va en el titular. Escribí lo que dice o hizo: verbo, dígito o predicado.`;
   }
-  const cred = new Set(tokens(credencial ?? ""));
-  const esCredencial =
-    (cred.size && contenido.every((w) => cred.has(w) || nombre.has(w))) ||
-    // «CREADOR DE CONTENIDO Y COMUNICADOR»: una ocupación seguida sólo de complementos con conector.
-    (!/\d/.test(hook) &&
-      ROLES.test(contenido[0]) &&
-      tokens(hook)
-        .slice(1)
-        .every((w, i, arr) => CONECTORES.has(w) || (i > 0 && CONECTORES.has(arr[i - 1]))));
-  if (esCredencial) {
-    return `hook_edicion es una ocupación o credencial ("${hook.trim()}"): eso va en el campo credencial, no en el titular. El titular es un claim con verbo, dígito o predicado.`;
+  // «CREADOR DE CONTENIDO Y COMUNICADOR»: una ocupación seguida sólo de complementos con conector.
+  const esOcupacion =
+    !/\d/.test(hook) &&
+    ROLES.test(contenido[0]) &&
+    tokens(hook)
+      .slice(1)
+      .every((w, i, arr) => CONECTORES.has(w) || (i > 0 && CONECTORES.has(arr[i - 1])));
+  if (esOcupacion) {
+    return `hook_edicion es una ocupación ("${hook.trim()}"), no un titular. El titular es un claim con verbo, dígito o predicado.`;
   }
   return null;
 }
@@ -105,8 +100,8 @@ export function hookNoEsClaim(hook: string, invitado?: string, credencial?: stri
 // La línea 1 del caption tiene que traer el MISMO número que el titular (el
 // que el audio dice en los primeros segundos). Cuando caption y audio se
 // alinean, la pieza rinde; cuando se desacoplan, cae. Un teaser ("nuevo
-// episodio…") o sólo el nombre del invitado como primera línea tampoco vale.
-const TEASER = /^\s*(¡?nuevo episodio|ya (está |esta )?disponible|episodio (nuevo|completo)|no te (lo )?pierdas|mirá el episodio|salió el episodio)/i;
+// video…") o sólo el nombre como primera línea tampoco vale.
+const TEASER = /^\s*(¡?nuevo video|ya (está |esta )?disponible|video (nuevo|completo)|no te (lo )?pierdas|mirá el video|salió el video)/i;
 
 /** Números en cifra, normalizados: «20.000» → «20000», «1,5» → «1.5», «300 y 400» → «300», «400». */
 export function cifras(s: string): string[] {
@@ -119,13 +114,13 @@ export function captionL1(c: CopyPieces): string {
 }
 
 /** Devuelve el problema si la línea 1 del caption no repite el número del titular, o es teaser / nombre solo; null si pasa. */
-export function captionSinElNumero(c: CopyPieces, invitado?: string): string | null {
+export function captionSinElNumero(c: CopyPieces, nombre?: string): string | null {
   const l1 = captionL1(c);
   if (!l1) return null; // lo agarra la regla de claim vacío
-  if (TEASER.test(l1)) return `La primera línea del caption ("${l1.slice(0, 60)}") es un teaser. Tiene que ser el claim del clip con su dato, no el anuncio del episodio.`;
+  if (TEASER.test(l1)) return `La primera línea del caption ("${l1.slice(0, 60)}") es un teaser. Tiene que ser el claim del clip con su dato, no el anuncio del video.`;
   const contenido = tokens(l1).filter((w) => !CONECTORES.has(w));
-  const nombre = new Set(tokens(invitado ?? ""));
-  if (contenido.length && nombre.size && contenido.every((w) => nombre.has(w))) return `La primera línea del caption es sólo el nombre del invitado ("${l1.slice(0, 60)}"): va el claim con el dato del titular.`;
+  const partesNombre = new Set(tokens(nombre ?? ""));
+  if (contenido.length && partesNombre.size && contenido.every((w) => partesNombre.has(w))) return `La primera línea del caption es sólo el nombre de quien habla ("${l1.slice(0, 60)}"): va el claim con el dato del titular.`;
   const delHook = cifras(c.hook_edicion ?? "");
   if (!delHook.length) return null; // sin número en el titular no hay qué alinear
   const enL1 = new Set(cifras(l1));
@@ -135,9 +130,9 @@ export function captionSinElNumero(c: CopyPieces, invitado?: string): string | n
 }
 
 /** Chequeos que no necesitan un modelo: son reglas duras del formato. */
-export function findProblems(c: CopyPieces, transcript: string, ctx: { invitado?: string } = {}): CopyProblem[] {
+export function findProblems(c: CopyPieces, transcript: string, ctx: { nombre?: string } = {}): CopyProblem[] {
   const p: CopyProblem[] = [];
-  const sinNumero = captionSinElNumero(c, ctx.invitado);
+  const sinNumero = captionSinElNumero(c, ctx.nombre);
   if (sinNumero) p.push(sinNumero);
 
   if (c.molde === "cita" && !quoteIsReal(c.cita_textual, transcript)) {
@@ -169,10 +164,9 @@ export function findProblems(c: CopyPieces, transcript: string, ctx: { invitado?
     const w = hook.split(/\s+/).filter(Boolean).length;
     if (w < 3 || w > 7) p.push(`hook_edicion tiene ${w} palabras; el formato son 3 a 7.`);
     if (/^¿|\?$/.test(hook)) p.push("hook_edicion no es una pregunta: escribí la afirmación más fuerte del clip como titular.");
-    const noClaim = hookNoEsClaim(hook, ctx.invitado, c.credencial);
+    const noClaim = hookNoEsClaim(hook, ctx.nombre);
     if (noClaim) p.push(noClaim);
   }
-  if ((c.credencial ?? "").split(/\s+/).filter(Boolean).length > 5) p.push("credencial: máximo 5 palabras, y sin el nombre del invitado.");
 
   return p;
 }
@@ -180,30 +174,21 @@ export function findProblems(c: CopyPieces, transcript: string, ctx: { invitado?
 /**
  * Redacta y reintenta UNA vez con los problemas encontrados como feedback.
  * Si el segundo intento tampoco pasa la verificación de cita, se degrada el molde
- * a "revelacion" en vez de publicar una cita que el invitado no dijo.
+ * a "revelacion" en vez de publicar una cita que nunca se dijo.
  */
 export async function writeCopy(
   ex: Extraction,
-  invitado: string,
   /** Preámbulo del system prompt (guía de estilo) y reglas extra. */
   systemPreamble: string,
   extraRules = "",
-  /** Contexto del episodio (qué hace el invitado, de qué va). El tramo solo no lo dice. */
-  episodio?: { tema: string; tesis: string; credencial?: string; curiosidad?: string },
+  /** Contexto del video completo. El tramo solo no lo dice. */
+  video?: { tema: string; tesis: string; curiosidad?: string },
 ): Promise<{ pieces: CopyPieces; problemas: CopyProblem[] }> {
   const brief = [
-    `TEMA: ${ex.tema}`,
-    `INVITADO: ${invitado || ex.invitado || "(desconocido — no lo nombres)"}`,
-    ...(episodio?.curiosidad ? [`CURIOSIDAD DE ENTRADA (con estas palabras busca la gente este tema): ${episodio.curiosidad}`] : []),
-    ...(episodio
-      ? [
-          `TEMA DEL EPISODIO COMPLETO: ${episodio.tema}`,
-          `TESIS DEL EPISODIO: ${episodio.tesis}`,
-          episodio.credencial
-            ? `CREDENCIAL DEL INVITADO (así se presentó): ${episodio.credencial} — va en el campo credencial. Si tiene más de 5 palabras, RECORTALA a la parte que más tiene que ver con este clip (no la dejes vacía).`
-            : "(No hay credencial registrada: dejá el campo credencial vacío, no la inventes.)",
-        ]
-      : []),
+    `TEMA DEL CLIP: ${ex.tema}`,
+    `QUIÉN HABLA: ${CREATOR_NAME}`,
+    ...(video?.curiosidad ? [`CURIOSIDAD DE ENTRADA (con estas palabras busca la gente este tema): ${video.curiosidad}`] : []),
+    ...(video ? [`TEMA DEL VIDEO COMPLETO: ${video.tema}`, `TESIS DEL VIDEO: ${video.tesis}`] : []),
     "",
     "CITAS TEXTUALES DETECTADAS:",
     ...ex.citas.map((c) => `- [${c.segundo}s] "${c.texto}"`),
@@ -217,7 +202,7 @@ export async function writeCopy(
     { role: "user", content: brief },
   ];
 
-  const ctx = { invitado: invitado || ex.invitado };
+  const ctx = { nombre: CREATOR_NAME };
   let pieces = await openaiJson<CopyPieces>(messages, SCHEMA, "clip_copy");
   let problemas = findProblems(pieces, ex.transcripcion, ctx);
 
@@ -242,13 +227,13 @@ export async function writeCopy(
 }
 
 /** El ensamblado final es código, no modelo: así el formato nunca varía. */
-export function buildCaption(c: CopyPieces, invitado: string, network: "instagram" | "tiktok" = "instagram"): string {
+export function buildCaption(c: CopyPieces, network: "instagram" | "tiktok" = "instagram"): string {
   // El modelo a veces devuelve la cita ya entre comillas: se sacan para no duplicarlas.
   const cita = c.cita_textual.trim().replace(/^["“«]+|["”»]+$/g, "");
   const emoji = (c.emoji ?? "").trim();
   // Y a veces pega el emoji al final del claim: no se repite.
   const claim = emoji && c.claim.trim().endsWith(emoji) ? c.claim.trim().slice(0, -emoji.length).trim() : c.claim.trim();
-  const head = c.molde === "cita" ? `"${cita}"${invitado ? ` ${invitado}` : ""} ${emoji}`.trim() : `${claim} ${emoji}`.trim();
+  const head = c.molde === "cita" ? `"${cita}" ${emoji}`.trim() : `${claim} ${emoji}`.trim();
   const list = network === "tiktok" && c.hashtags_tiktok?.length ? c.hashtags_tiktok : c.hashtags;
   const tags = list.map((h) => `#${normalizeHashtag(h)}`).join(" ");
   return [head, CTA_TEXT, tags].filter(Boolean).join("\n\n");

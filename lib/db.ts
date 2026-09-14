@@ -87,7 +87,7 @@ export function ensureSchema(): Promise<void> {
   if (!schemaReady) {
     schemaReady = (async () => {
       const q = sql();
-      await q`CREATE TABLE IF NOT EXISTS episodes (
+      await q`CREATE TABLE IF NOT EXISTS videos (
         video_id text PRIMARY KEY,
         status text NOT NULL,
         published_at timestamptz,
@@ -97,7 +97,7 @@ export function ensureSchema(): Promise<void> {
       )`;
       await q`CREATE TABLE IF NOT EXISTS items (
         id text PRIMARY KEY,
-        episode_id text NOT NULL,
+        video_id text NOT NULL,
         kind text NOT NULL,
         date date NOT NULL,
         time text NOT NULL,

@@ -1,6 +1,6 @@
 // Redacción encadenada entre invocaciones.
 //
-// Una función serverless dura pocos minutos como mucho; un episodio con varios
+// Una función serverless dura pocos minutos como mucho; un video con varios
 // clips supera eso. Entonces cada invocación escribe de a 2 piezas mientras le
 // quede presupuesto y, si faltan, se re-invoca a sí misma
 // (GET /api/cron/scan?step=write) con `after()`, que mantiene viva la función

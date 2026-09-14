@@ -9,13 +9,14 @@
 //
 // Emparejamiento: cada post del perfil se compara con las piezas del calendario
 // por tipo (video↔clip), fecha (±3 días) y caption. Si se pegó la URL del
-// post en la pieza, esa manda. Se guarda de dónde salió cada
-// dato (source: "auto") y no se pisan los campos que sólo se cargan a mano.
+// post en la pieza, esa manda. Un post de video publicado el mismo día que
+// una única pieza agendada también empareja aunque el caption se haya
+// reescrito al publicar. Se guarda de dónde salió cada dato (source: "auto")
+// y no se pisan los campos que sólo se cargan a mano.
 
 import type { Item, Metrics, Platform, PublishedPost, State } from "@/lib/store";
 import { logLine } from "@/lib/store";
 import { normalize } from "@/lib/openai";
-import { METRIC_CHECKPOINTS, qstashConfigured, scheduleGet } from "@/lib/qstash";
 import { BRAND_HASHTAG, INSTAGRAM_USERNAME, PUBLISH_TIME, TIKTOK_USERNAME, TIMEZONE } from "@/lib/config";
 const APIFY = "https://api.apify.com/v2/acts";
 
@@ -138,7 +139,7 @@ function num(x: unknown): number | undefined {
 
 // ── emparejamiento ────────────────────────────────────────────────────────────
 
-function itemText(it: Item, _network: Platform): string {
+function itemText(it: Item): string {
   if (it.clip) return `${it.clip.caption} ${it.clip.tituloInterno} ${it.clip.pieces.claim} ${it.clip.pieces.cita_textual}`;
   return "";
 }
@@ -146,7 +147,7 @@ function itemText(it: Item, _network: Platform): string {
 // Palabras que aparecen en TODAS las piezas y no distinguen nada.
 const STOP = new Set(
   [BRAND_HASHTAG, ...
-  "podcast episodio episodios completo canal youtube comentá comenta mandamos pasamos link cosas contó conto aprendimos sentamos nuestro nuestra sobre para como cuando donde entre desde hasta también tambien porque pero este esta estos estas ese esa eso aquel mira mirá tiktok instagram reels reel clip carrusel hoy disponible nuevo nueva".split(" ")].filter(Boolean),
+  "video videos completo canal youtube comentá comenta mandamos pasamos link cosas contó conto aprendimos sentamos nuestro nuestra sobre para como cuando donde entre desde hasta también tambien porque pero este esta estos estas ese esa eso aquel mira mirá tiktok instagram reels reel clip carrusel hoy disponible nuevo nueva".split(" ")].filter(Boolean),
 );
 function words(t: string): Set<string> {
   return new Set(
@@ -173,36 +174,6 @@ function horaLocal(iso: string): number | undefined {
   return Number(new Intl.DateTimeFormat("en-GB", { timeZone: TIMEZONE, hour: "2-digit", hour12: false }).format(d));
 }
 
-/** ¿El post nombra al invitado de la pieza (nombre o apellido)? */
-
-function mentionsGuest(post: SocialPost, guest: string): boolean {
-  if (!guest) return false;
-  const p = normalize(post.text);
-  const parts = normalize(guest).split(" ").filter((w) => w.length > 2);
-  return parts.some((w) => p.includes(w));
-}
-
-/**
- * El post nombra al invitado COMPLETO (nombre y apellido). Es la señal más
- * fuerte que hay para una cuenta chica: alcanza para emparejar aunque el
- * caption publicado no se parezca al guardado, que es lo que pasa siempre que
- * la copia final se editó a mano fuera de la app.
- */
-function mentionsGuestFullName(post: SocialPost, guest: string): boolean {
-  const parts = normalize(guest).split(" ").filter((w) => w.length > 2);
-  if (parts.length < 2) return false;
-  // Palabra completa, no substring: "@juampihernandezz" NO cuenta como "Juampi
-  // Hernández" — con substring, cualquier post que arrobe al invitado se
-  // emparejaba con cualquier pieza suya (falso positivo).
-  const words = new Set(normalize(post.text).split(" "));
-  return parts.every((w) => words.has(w));
-}
-
-/** Posts de "ya está disponible el episodio": promocionan el capítulo, no son piezas del calendario. */
-function isEpisodeAnnouncement(post: SocialPost): boolean {
-  return /(ya esta disponible|nuevo episodio|episodio completo en|capitulo \d)/i.test(normalize(post.text));
-}
-
 /** Instante UTC de una fecha local a la hora de publicación, en la zona configurada. */
 function localInstant(date: string, time = PUBLISH_TIME): number {
   const naive = Date.parse(`${date}T${time}:00Z`);
@@ -218,7 +189,6 @@ function daysBetween(isoA: string, dateB: string): number {
 }
 
 export function matchPosts(state: State, posts: SocialPost[]): { item: Item; post: SocialPost; how: "manual" | "auto"; score: number }[] {
-  const guestOf = (it: Item) => state.episodes.find((e) => e.videoId === it.episodeId)?.guest ?? "";
   const out: { item: Item; post: SocialPost; how: "manual" | "auto"; score: number }[] = [];
   const takenItems = new Set<string>();
   // 1) URLs pegadas a mano mandan.
@@ -234,26 +204,19 @@ export function matchPosts(state: State, posts: SocialPost[]): { item: Item; pos
   // 2) El resto, por tipo + fecha + texto.
   for (const p of posts) {
     if (out.some((m) => m.post.id === p.id && m.post.network === p.network)) continue;
-    if (isEpisodeAnnouncement(p)) continue;
+    if (p.kind !== "clip") continue;
+    const libres = state.items.filter((it) => it.clip && !takenItems.has(`${it.id}:${p.network}`));
+    // Piezas a un día o menos del post. Si hay UNA sola, el calendario ya
+    // dice cuál es aunque el caption se haya reescrito al publicar.
+    const vecinas = libres.filter((it) => daysBetween(p.publishedAt, it.date) <= 1);
     let best: { item: Item; score: number } | null = null;
-    for (const it of state.items) {
-      if (p.kind !== "clip" || !it.clip) continue;
-      if (takenItems.has(`${it.id}:${p.network}`)) continue;
+    for (const it of libres) {
       const days = daysBetween(p.publishedAt, it.date);
-      const sim = similarity(p.text, itemText(it, p.network));
-      const guest = mentionsGuest(p, guestOf(it));
-      const fullName = mentionsGuestFullName(p, guestOf(it));
-      // El nombre completo baja el umbral de TEXTO (la copia publicada casi
-      // nunca es la guardada: se edita a mano), pero NO abre la ventana de
-      // fecha: sin fecha cercana no hay emparejamiento posible.
-      if (days > (fullName ? 7 : 3)) continue;
-      // El nombre completo del invitado + la ventana de fecha alcanzan por sí
-      // solos. Antes se pedía además sim >= 0.12, y cuando el caption se
-      // reescribe al publicar el parecido cae a cero: había posts con el
-      // nombre completo y una pieza a un día de distancia que igual quedaban
-      // sueltos. El score sigue premiando el parecido cuando existe.
-      if (sim < 0.6 && !(sim >= 0.35 && guest) && !fullName) continue;
-      const score = sim * 0.6 + (guest ? 0.1 : 0) + (fullName ? 0.25 : 0) + (days <= 3 ? (1 - days / 3) * 0.15 : 0);
+      if (days > 3) continue;
+      const sim = similarity(p.text, itemText(it));
+      const unica = vecinas.length === 1 && vecinas[0] === it;
+      if (sim < 0.35 && !unica) continue;
+      const score = sim * 0.6 + (unica ? 0.25 : 0) + (1 - days / 3) * 0.15;
       if (!best || score > best.score) best = { item: it, score };
     }
     if (best) {
@@ -416,40 +379,6 @@ export async function syncMetrics(state: State): Promise<{ matched: number; upda
     .join(" · ");
   logLine(state, `Métricas — ${detalle} · ${updated} piezas actualizadas${errors.length ? ` · avisos: ${errors.join(" | ")}` : ""}.`);
   return { matched: matches.length, updated, posts: posts.length, errors };
-}
-
-/** Al marcar publicado: programa los checkpoints de métricas (5h / 24h / 7d) vía QStash. */
-export async function scheduleMetricCheckpoints(state: State, it: Item, origin: string): Promise<void> {
-  if (!qstashConfigured()) {
-    if (!it.metricsScheduled?.length) logLine(state, `QStash no configurado: las métricas de ${it.kind} del ${it.date} llegarán con el sync diario.`);
-    return;
-  }
-  const done = new Set(it.metricsScheduled ?? []);
-  for (const cp of METRIC_CHECKPOINTS) {
-    if (done.has(cp.key)) continue;
-    try {
-      const url = `${origin}/api/cron/scan?step=metrics-item&itemId=${encodeURIComponent(it.id)}&cp=${cp.key}`;
-      await scheduleGet(url, cp.seconds);
-      done.add(cp.key);
-    } catch (err) {
-      logLine(state, `No pude programar métricas ${cp.key} para ${it.kind} del ${it.date}: ${err instanceof Error ? err.message : String(err)}`);
-    }
-  }
-  it.metricsScheduled = [...done];
-  logLine(state, `Métricas programadas (${[...done].join(", ")}) para ${it.kind} del ${it.date}.`);
-}
-
-/** Checkpoint vencido: sync global y foto de las métricas de esa pieza. */
-export async function runMetricCheckpoint(state: State, itemId: string, cp: string): Promise<void> {
-  const it = state.items.find((i) => i.id === itemId);
-  if (!it) return;
-  await syncMetrics(state);
-  if (it.metrics && Object.keys(it.metrics).length) {
-    it.metricsHistory = { ...(it.metricsHistory ?? {}), [cp]: { at: new Date().toISOString(), metrics: JSON.parse(JSON.stringify(it.metrics)) } };
-    logLine(state, `Checkpoint ${cp} de ${it.kind} del ${it.date}: ${Object.entries(it.metrics).map(([n, m]) => `${n} ${m?.views ?? "?"} views`).join(" · ")}.`);
-  } else {
-    logLine(state, `Checkpoint ${cp} de ${it.kind} del ${it.date}: todavía sin post emparejado (pegá la URL en Seguimiento si el sync no lo encuentra).`);
-  }
 }
 
 function ytId(url: string): string | null {

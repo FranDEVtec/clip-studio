@@ -1,6 +1,6 @@
 // Estado del calendario, persistido en Postgres (lib/db.ts).
 //
-// El modelo en memoria es un State completo (episodios, piezas, ajustes, log):
+// El modelo en memoria es un State completo (videos, piezas, ajustes, log):
 // toda la lógica del pipeline y de la UI trabaja sobre él. La base guarda cada
 // entidad en su tabla con columnas clave (para consultar) + un JSONB con el
 // contenido completo (para no migrar el schema cada vez que cambia una pieza).
@@ -15,7 +15,7 @@ export type Platform = "tiktok" | "instagram" | "youtube";
 
 export type Cita = { texto: string; segundo: number };
 
-/** Candidato a clip que Gemini detectó mirando el episodio completo. */
+/** Candidato a clip que Gemini detectó mirando el video completo. */
 export type ClipCandidate = {
   inicio: number;
   fin: number;
@@ -27,26 +27,22 @@ export type ClipCandidate = {
   motivo: string;
   /** La pregunta que la gente ya se hace sobre este tema: la puerta de entrada del clip. */
   curiosidad?: string;
-  /** Índice del eje del episodio al que pertenece. */
+  /** Índice del eje del video al que pertenece. */
   eje?: number;
   puntaje: number;
 };
 
 export type Eje = { nombre: string; idea: string; segundo: number };
 
-export type EpisodeAnalysis = {
-  invitado: string;
-  numero_episodio: string;
-  /** A qué se dedica el invitado, con sus palabras y sin su nombre. */
-  credencial?: string;
+export type VideoAnalysis = {
   tema: string;
   tesis: string;
-  /** Los 3-5 temas que el invitado desarrolla de verdad. */
+  /** Los 3-5 temas que el video desarrolla de verdad. */
   ejes?: Eje[];
   clips: ClipCandidate[];
 };
 
-export type Episode = {
+export type Video = {
   videoId: string;
   url: string;
   title: string;
@@ -54,15 +50,10 @@ export type Episode = {
   /** "ignored": estaba en el RSS al primer escaneo pero es viejo o corto; se analiza sólo a pedido. */
   status: "pending" | "analyzing" | "analyzed" | "error" | "ignored";
   error?: string;
-  /** Editables desde la UI; pisan lo que detectó el modelo. */
-  guest?: string;
-  episodeNumber?: string;
   analyzedAt?: string;
-  analysis?: EpisodeAnalysis;
-  /** Cuántos clips ya se agendaron de este episodio. */
+  analysis?: VideoAnalysis;
+  /** Cuántos clips ya se agendaron de este video. */
   scheduled?: { clips: number };
-  /** Semana extendida: no hay episodio el domingo siguiente → las piezas se estiran a 14 días. */
-  stretch?: boolean;
   /** Nota del planificador: hilo de la semana. */
   planNote?: string;
 };
@@ -125,7 +116,8 @@ export type Metrics = {
 
 export type Item = {
   id: string;
-  episodeId: string;
+  /** El video de YouTube del que sale el clip. */
+  videoId: string;
   kind: "clip";
   /** Fecha local, YYYY-MM-DD. */
   date: string;
@@ -137,15 +129,9 @@ export type Item = {
   /** Redes en las que ya se publicó (checklist de la vista Hoy). */
   publishedOn?: Platform[];
   clip?: ClipItem;
-  /** Repost de una pieza vieja: el domingo sin episodio nuevo se recicla. */
-  recycleOf?: string;
   /** Reserva del planner hasta que la pieza se escribe. */
   draft?: { candidateIndex?: number; angulo?: string };
   metrics?: Partial<Record<Platform, Metrics>>;
-  /** Fotos de las métricas en cada checkpoint tras publicar (5h, 24h, 7d). */
-  metricsHistory?: Record<string, { at: string; metrics: Partial<Record<Platform, Metrics>> }>;
-  /** Checkpoints ya programados en QStash (evita duplicar). */
-  metricsScheduled?: string[];
   /** El post publicado en cada red (URL pegada a mano o emparejada por el sync). */
   posts?: Partial<Record<Platform, { url: string; externalId?: string; matchedBy: "manual" | "auto"; matchedAt: string; publishedAt?: string }>>;
 };
@@ -181,13 +167,11 @@ export type PublishedPost = {
 export type Settings = {
   /** Guía de estilo: va primero en todos los prompts de redacción. */
   styleGuide?: string;
-  /** Reglas puntuales que se anexan a los prompts. */
-  rules?: { id: string; text: string; active: boolean; createdAt: string }[];
 };
 
 export type State = {
   version: 1;
-  episodes: Episode[];
+  videos: Video[];
   items: Item[];
   settings?: Settings;
   lastScanAt?: string;
@@ -200,25 +184,25 @@ export type State = {
 };
 
 export function emptyState(): State {
-  return { version: 1, episodes: [], items: [], log: [] };
+  return { version: 1, videos: [], items: [], log: [] };
 }
 
-type EpisodeRow = { data: Episode };
+type VideoRow = { data: Video };
 type ItemRow = { data: Item };
 type MetaRow = { key: string; value: unknown };
 
 export async function loadState(): Promise<State> {
   await ensureSchema();
   const q = sql();
-  const [episodes, items, meta] = (await Promise.all([
-    q`SELECT data FROM episodes ORDER BY published_at DESC NULLS LAST`,
+  const [videos, items, meta] = (await Promise.all([
+    q`SELECT data FROM videos ORDER BY published_at DESC NULLS LAST`,
     q`SELECT data FROM items ORDER BY date, time`,
     q`SELECT key, value FROM meta`,
-  ])) as unknown as [EpisodeRow[], ItemRow[], MetaRow[]];
+  ])) as unknown as [VideoRow[], ItemRow[], MetaRow[]];
   const metaMap = new Map(meta.map((m) => [m.key, m.value]));
   return {
     version: 1,
-    episodes: episodes.map((r) => r.data),
+    videos: videos.map((r) => r.data),
     items: items.map((r) => r.data),
     settings: (metaMap.get("settings") as Settings | undefined) ?? undefined,
     lastScanAt: (metaMap.get("lastScanAt") as string | undefined) ?? undefined,
@@ -245,18 +229,18 @@ export async function saveState(state: State): Promise<void> {
     q`INSERT INTO meta (key, value, updated_at) VALUES (${key}, ${j(value)}::jsonb, now())
       ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = now()`;
   const queries = [
-    ...state.episodes.map(
-      (e) =>
-        q`INSERT INTO episodes (video_id, status, published_at, title, data, updated_at)
-          VALUES (${e.videoId}, ${e.status}, ${e.publishedAt}, ${e.title}, ${j(e)}::jsonb, now())
+    ...state.videos.map(
+      (v) =>
+        q`INSERT INTO videos (video_id, status, published_at, title, data, updated_at)
+          VALUES (${v.videoId}, ${v.status}, ${v.publishedAt}, ${v.title}, ${j(v)}::jsonb, now())
           ON CONFLICT (video_id) DO UPDATE SET status = EXCLUDED.status, published_at = EXCLUDED.published_at, title = EXCLUDED.title, data = EXCLUDED.data, updated_at = now()`,
     ),
-    q`DELETE FROM episodes WHERE NOT (video_id = ANY(${state.episodes.map((e) => e.videoId)}::text[]))`,
+    q`DELETE FROM videos WHERE NOT (video_id = ANY(${state.videos.map((v) => v.videoId)}::text[]))`,
     ...state.items.map(
       (i) =>
-        q`INSERT INTO items (id, episode_id, kind, date, time, status, data, updated_at)
-          VALUES (${i.id}, ${i.episodeId}, ${i.kind}, ${i.date}, ${i.time}, ${i.status}, ${j(i)}::jsonb, now())
-          ON CONFLICT (id) DO UPDATE SET episode_id = EXCLUDED.episode_id, kind = EXCLUDED.kind, date = EXCLUDED.date, time = EXCLUDED.time, status = EXCLUDED.status, data = EXCLUDED.data, updated_at = now()`,
+        q`INSERT INTO items (id, video_id, kind, date, time, status, data, updated_at)
+          VALUES (${i.id}, ${i.videoId}, ${i.kind}, ${i.date}, ${i.time}, ${i.status}, ${j(i)}::jsonb, now())
+          ON CONFLICT (id) DO UPDATE SET video_id = EXCLUDED.video_id, kind = EXCLUDED.kind, date = EXCLUDED.date, time = EXCLUDED.time, status = EXCLUDED.status, data = EXCLUDED.data, updated_at = now()`,
     ),
     q`DELETE FROM items WHERE NOT (id = ANY(${state.items.map((i) => i.id)}::text[]))`,
     meta("version", 1),
@@ -287,19 +271,17 @@ export async function mergeSave(state: State, itemIds: string[]): Promise<State>
   }
   const have = new Set(fresh.log);
   for (const line of state.log) if (!have.has(line)) fresh.log.push(line);
-  for (const ep of state.episodes) {
-    const idx = fresh.episodes.findIndex((e) => e.videoId === ep.videoId);
-    if (idx >= 0 && (ep.analyzedAt ?? "") >= (fresh.episodes[idx].analyzedAt ?? "")) {
-      fresh.episodes[idx] = {
-        ...fresh.episodes[idx],
-        status: ep.status,
-        error: ep.error,
-        analysis: ep.analysis ?? fresh.episodes[idx].analysis,
-        analyzedAt: ep.analyzedAt ?? fresh.episodes[idx].analyzedAt,
-        planNote: ep.planNote ?? fresh.episodes[idx].planNote,
-        scheduled: ep.scheduled ?? fresh.episodes[idx].scheduled,
-        guest: fresh.episodes[idx].guest || ep.guest,
-        episodeNumber: fresh.episodes[idx].episodeNumber || ep.episodeNumber,
+  for (const v of state.videos) {
+    const idx = fresh.videos.findIndex((f) => f.videoId === v.videoId);
+    if (idx >= 0 && (v.analyzedAt ?? "") >= (fresh.videos[idx].analyzedAt ?? "")) {
+      fresh.videos[idx] = {
+        ...fresh.videos[idx],
+        status: v.status,
+        error: v.error,
+        analysis: v.analysis ?? fresh.videos[idx].analysis,
+        analyzedAt: v.analyzedAt ?? fresh.videos[idx].analyzedAt,
+        planNote: v.planNote ?? fresh.videos[idx].planNote,
+        scheduled: v.scheduled ?? fresh.videos[idx].scheduled,
       };
     }
   }

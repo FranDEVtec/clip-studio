@@ -1,12 +1,12 @@
 {
-  "name": "podcast-clip-studio",
+  "name": "clip-studio",
   "version": "0.1.0",
   "private": true,
   "license": "MIT",
   "author": "Francisco Bottaro (https://github.com/FranDEVtec)",
   "repository": {
     "type": "git",
-    "url": "https://github.com/FranDEVtec/podcast-clip-studio.git"
+    "url": "https://github.com/FranDEVtec/clip-studio.git"
   },
   "engines": {
     "node": ">=20"
@@ -16,7 +16,9 @@
     "build": "next build",
     "start": "next start",
     "typecheck": "tsc --noEmit",
-    "test": "tsx lib/planner.test.ts && tsx lib/copy.test.ts && tsx lib/stats.test.ts"
+    "test": "tsx lib/planner.test.ts && tsx lib/copy.test.ts && tsx lib/stats.test.ts && tsx lib/metrics-sync.test.ts",
+    "setup": "tsx scripts/setup.mts",
+    "push-env": "tsx scripts/push-env.mts"
   },
   "dependencies": {
     "@google/genai": "^1.9.0",

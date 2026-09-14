@@ -8,8 +8,8 @@ const TZ = process.env.NEXT_PUBLIC_TIMEZONE || "America/Argentina/Buenos_Aires";
 const LOCALE = process.env.NEXT_PUBLIC_LOCALE || "es-AR";
 
 const STEPS = [
-  { n: "01", t: "El episodio entra al canal", d: "el sistema lo detecta y busca los mejores momentos." },
-  { n: "02", t: "El redactor escribe cada clip", d: "corte, titular y captions, con las reglas de la cuenta." },
+  { n: "01", t: "El video entra al canal", d: "el sistema lo detecta y busca los mejores momentos." },
+  { n: "02", t: "El redactor escribe cada clip", d: "corte, titular y captions, con tu guía de estilo." },
   { n: "03", t: "Todos los días, una pieza lista", d: "copiás el caption y publicás." },
   { n: "04", t: "Después, los números", d: "métricas propias y un modelo que aprende de ellas." },
 ];
@@ -37,7 +37,7 @@ export default function LoginPage() {
     fetch("/api/auth/me")
       .then((r) => r.json())
       .then((m) => {
-        if (m.session) window.location.href = "/calendario";
+        if (m.session) window.location.href = "/app";
         else setMe(m);
       })
       .catch(() => setMe({ session: null, googleConfigured: false, authConfigured: false }));
@@ -61,7 +61,7 @@ export default function LoginPage() {
       return;
     }
     localStorage.setItem(CODE_KEY, c);
-    window.location.href = "/calendario";
+    window.location.href = "/app";
   }
 
   const loading = me === null;
@@ -87,7 +87,7 @@ export default function LoginPage() {
             </h1>
           </div>
           <p className="gate-lead rise" style={{ animationDelay: ".12s" }}>
-            Del episodio publicado a la pieza lista, sin pasos a mano.
+            Del video publicado a la pieza lista, sin pasos a mano.
           </p>
           <ol className="gate-steps rise" style={{ animationDelay: ".18s" }}>
             {STEPS.map((s) => (
@@ -159,7 +159,7 @@ export default function LoginPage() {
                 )}
 
                 <div className="gate-card-foot">
-                  <div className="gate-index">Hoy · Semana · Episodios · Publicaciones · Métricas</div>
+                  <div className="gate-index">Hoy · Semana · Videos · Publicaciones · Métricas</div>
                   <p className="gate-legal">Sesión de 30 días. Cerrás sesión desde el menú.</p>
                 </div>
               </>

@@ -21,7 +21,7 @@ assert(posterior(0, 0, "saveRate").media > 0, "sin datos, la media es el prior (
 // palancas sobre un estado chico: no rompe y devuelve una por dimensión
 const clip = (id: string, date: string, hora: number, views: number, saves: number): Item => ({
   id,
-  episodeId: "ep",
+  videoId: "ep",
   kind: "clip",
   date,
   time: "21:00",
@@ -35,13 +35,13 @@ const clip = (id: string, date: string, hora: number, views: number, saves: numb
     molde: "revelacion",
     transcripcion: "",
     avisos: [],
-    pieces: { molde: "revelacion", claim: "El 98% no lo sabe", cita_textual: "", emoji: "", hashtags: [], hashtags_tiktok: [], hook_edicion: "EL 98% NO LO SABE", credencial: "" },
+    pieces: { molde: "revelacion", claim: "El 98% no lo sabe", cita_textual: "", emoji: "", hashtags: [], hashtags_tiktok: [], hook_edicion: "EL 98% NO LO SABE" },
   },
   metrics: { tiktok: { views, saves, hora, duracionSeg: 80, updatedAt: "2026-01-02T00:00:00Z" } },
 });
 const state: State = {
   version: 1,
-  episodes: [{ videoId: "ep", url: "", title: "t", publishedAt: "2026-01-01T00:00:00Z", status: "analyzed", guest: "Ana Gómez" }],
+  videos: [{ videoId: "ep", url: "", title: "t", publishedAt: "2026-01-01T00:00:00Z", status: "analyzed" }],
   items: [clip("a", "2026-01-05", 21, 1000, 40), clip("b", "2026-01-06", 12, 1000, 5), clip("c", "2026-01-07", 21, 1200, 50)],
   log: [],
 };
@@ -53,4 +53,4 @@ const dec = decidir(palancas);
 assert(dec.every((d) => d.elegido), "cada decisión elige una opción");
 const k = conocimiento(state, palancas);
 assert(k.observaciones === 3 && k.veredicto.length > 0, `conocimiento cuenta 3 observaciones y tiene veredicto (${k.observaciones})`);
-assert(conocimiento({ version: 1, episodes: [], items: [], log: [] }, analizarPalancas({ version: 1, episodes: [], items: [], log: [] })).veredicto.length > 0, "sin datos hay veredicto igual (no rompe)");
+assert(conocimiento({ version: 1, videos: [], items: [], log: [] }, analizarPalancas({ version: 1, videos: [], items: [], log: [] })).veredicto.length > 0, "sin datos hay veredicto igual (no rompe)");

@@ -1,11 +1,11 @@
-// Cron diario (vercel.json): mira el canal, analiza el episodio nuevo si lo hay
+// Cron diario (vercel.json): mira el canal, analiza el video nuevo si lo hay
 // y agenda sus piezas. También se puede disparar a mano desde la UI.
 import { NextResponse, after } from "next/server";
 import { isAuthorized } from "@/lib/auth";
 import { loadState, saveState, logLine } from "@/lib/store";
 import { pendingDrafts, processNextPending, scanChannel, scheduleMissing } from "@/lib/pipeline";
 import { continueStep, continueWriting, selfAuthHeaders, writeLoop } from "@/lib/chain";
-import { runMetricCheckpoint, syncMetrics } from "@/lib/metrics-sync";
+import { syncMetrics } from "@/lib/metrics-sync";
 
 export const maxDuration = 300;
 export const dynamic = "force-dynamic";
@@ -25,13 +25,6 @@ export async function GET(request: Request) {
   const state = await loadState();
   try {
     let queued = 0;
-    if (step === "metrics-item") {
-      const itemId = url.searchParams.get("itemId") ?? "";
-      const cp = url.searchParams.get("cp") ?? "x";
-      await runMetricCheckpoint(state, itemId, cp);
-      await saveState(state);
-      return NextResponse.json({ ok: true, itemId, cp });
-    }
     if (step === "metrics") {
       // Paso separado: los scrapers tardan 1-3 min y no tienen por qué compartir invocación con Gemini.
       const r = await syncMetrics(state);
@@ -41,20 +34,20 @@ export async function GET(request: Request) {
     if (step === "analyze") {
       // Paso propio: Gemini mirando una hora de video se come casi toda la
       // invocación. Compartirla con el escaneo y la redacción la mata por tiempo.
-      const ep = await processNextPending(state);
+      const video = await processNextPending(state);
       await saveState(state);
       await scheduleMissing(state);
       await saveState(state);
-      const quedan = state.episodes.some((e) => e.status === "pending");
+      const quedan = state.videos.some((v) => v.status === "pending");
       if (quedan) continueStep(origin, "analyze");
       else continueWriting(origin, pendingDrafts(state).length, state);
-      return NextResponse.json({ ok: true, analizado: ep?.videoId ?? null, quedanPendientes: quedan });
+      return NextResponse.json({ ok: true, analizado: video?.videoId ?? null, quedanPendientes: quedan });
     }
     if (step !== "write") {
       queued = await scanChannel(state);
-      logLine(state, `Escaneo: ${queued} episodio(s) nuevo(s) en cola.`);
+      logLine(state, `Escaneo: ${queued} video(s) nuevo(s) en cola.`);
       await saveState(state);
-      if (state.episodes.some((e) => e.status === "pending")) {
+      if (state.videos.some((v) => v.status === "pending")) {
         continueStep(origin, "analyze");
         return NextResponse.json({ ok: true, queued, analisis: "encadenado" });
       }

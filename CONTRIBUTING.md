@@ -18,6 +18,7 @@ cp .env.example .env.local   # fill in DATABASE_URL and ACCESS_CODE at least
 npm run dev                  # http://localhost:3000
 npm run typecheck
 npm test                     # pure unit tests, no network
+npm run setup                # onboarding script (validates keys against the real APIs)
 npm run build
 ```
 
@@ -29,8 +30,8 @@ See `docs/ARCHITECTURE.md`.
 
 ## Tests
 
-Tests are plain TypeScript files run with `tsx` (`lib/*.test.ts`). They cover the pure parts: planner gates, copy gates, the Bayesian model. Anything that touches Gemini, OpenAI, Apify or the database is verified by running the app.
+Tests are plain TypeScript files run with `tsx` (`lib/*.test.ts`). They cover the pure parts: planner gates, copy gates, post matching, the Bayesian model. Anything that touches Gemini, OpenAI, Apify or the database is verified by running the app.
 
 ## Style
 
-Spanish (rioplatense) in UI strings, prompts and comments, to match the product's first users. English is fine in docs and commit messages. Keep comments about *why*, not *what*.
+Spanish (rioplatense) in UI strings, prompts and comments, to match the product's first users. The UI vocabulary is *video* and *clip*, never *episode* or *guest*: this is for solo creators. English is fine in docs and commit messages. Keep comments about *why*, not *what*.

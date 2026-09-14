@@ -9,7 +9,7 @@ const plexMono = IBM_Plex_Mono({ subsets: ["latin"], weight: ["400", "500"], var
 
 export const metadata: Metadata = {
   title: BRAND_NAME,
-  description: "Motor de clips y tracker de métricas para podcasts",
+  description: "Motor de clips y tracker de métricas para creadores de YouTube",
   robots: { index: false, follow: false },
 };
 

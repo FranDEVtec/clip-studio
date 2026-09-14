@@ -10,7 +10,7 @@ export async function GET(request: Request) {
   try {
     if (!code || !state) throw new Error(url.searchParams.get("error") ?? "Sin code");
     const session = await finishGoogleAuth(url.origin, code, state, jar.get(STATE_COOKIE_NAME)?.value);
-    const res = NextResponse.redirect(new URL("/calendario", canonicalOrigin(url.origin)));
+    const res = NextResponse.redirect(new URL("/app", canonicalOrigin(url.origin)));
     res.headers.append("Set-Cookie", sessionCookieHeader(session));
     res.headers.append("Set-Cookie", `${STATE_COOKIE_NAME}=; Path=/; Max-Age=0`);
     return res;

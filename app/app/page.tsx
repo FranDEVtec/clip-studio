@@ -1,11 +1,11 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import type { Episode, Item, State } from "@/lib/store";
+import type { Video, Item, State } from "@/lib/store";
 import type { PublicConfig } from "@/lib/config";
-import { Act, addDays, BRAND, CODE_KEY, DAY_NAMES, EpisodeRow, fmtDateTime, fmtDay, fmtTime, isoDow, ItemDetail, LOCALE, StatsSection, todayLocal, weekStart } from "./parts";
+import { Act, addDays, BRAND, CODE_KEY, DAY_NAMES, VideoRow, fmtDateTime, fmtDay, fmtTime, isoDow, ItemDetail, LOCALE, StatsSection, todayLocal, weekStart } from "./parts";
 
-type Tab = "hoy" | "semana" | "episodios" | "publicaciones" | "metricas" | "ajustes";
+type Tab = "hoy" | "semana" | "videos" | "publicaciones" | "metricas" | "ajustes";
 type Me = { session: { email: string; name?: string; picture?: string } | null; googleConfigured: boolean; authConfigured: boolean };
 type FullState = State & {
   config?: PublicConfig;
@@ -27,7 +27,7 @@ type FullState = State & {
 const TABS: { id: Tab; label: string; short: string }[] = [
   { id: "hoy", label: "Hoy", short: "Hoy" },
   { id: "semana", label: "Semana", short: "Semana" },
-  { id: "episodios", label: "Episodios", short: "Eps" },
+  { id: "videos", label: "Videos", short: "Videos" },
   { id: "publicaciones", label: "Publicaciones", short: "Posts" },
   { id: "metricas", label: "Métricas", short: "Datos" },
   { id: "ajustes", label: "Ajustes", short: "Ajustes" },
@@ -129,9 +129,9 @@ export default function CalendarioPage() {
     setTimeout(() => setCopied(null), 1600);
   }
 
-  const episodesById = useMemo(() => {
-    const m = new Map<string, Episode>();
-    state?.episodes.forEach((e) => m.set(e.videoId, e));
+  const videosById = useMemo(() => {
+    const m = new Map<string, Video>();
+    state?.videos.forEach((e) => m.set(e.videoId, e));
     return m;
   }, [state]);
 
@@ -157,7 +157,7 @@ export default function CalendarioPage() {
 
   const s = state!;
   const detail = openItem && (
-    <ItemDetail item={openItem} episode={episodesById.get(openItem.episodeId)} busy={busy} copied={copied} onCopy={copy} onAct={act} onClose={() => setOpen(null)} />
+    <ItemDetail item={openItem} video={videosById.get(openItem.videoId)} busy={busy} copied={copied} onCopy={copy} onAct={act} onClose={() => setOpen(null)} />
   );
 
   return (
@@ -204,7 +204,7 @@ export default function CalendarioPage() {
                       next ? (
                         <>Hoy no se publica. Próxima pieza: <b>{DAY_NAMES[isoDow(next.date) - 1]} {fmtDay(next.date)}</b>.</>
                       ) : (
-                        <>No hay piezas agendadas. Escaneá el canal o analizá un episodio en Episodios.</>
+                        <>No hay piezas agendadas. Escaneá el canal o analizá un video en Videos.</>
                       )
                     ) : pending === 0 ? (
                       <>Hoy está <b>cerrado</b>: {todays.length} de {todays.length} publicadas.</>
@@ -226,7 +226,7 @@ export default function CalendarioPage() {
           <Kicker>Hoy en el calendario</Kicker>
           {todays.length === 0 && <div className="hoy-empty">Nada agendado para hoy.</div>}
           {todays.map((it) => (
-            <TodayCard key={it.id} item={it} episode={episodesById.get(it.episodeId)} busy={busy} onAct={act} onOpen={() => setOpen(open === it.id ? null : it.id)} />
+            <TodayCard key={it.id} item={it} video={videosById.get(it.videoId)} busy={busy} onAct={act} onOpen={() => setOpen(open === it.id ? null : it.id)} />
           ))}
 
           {detail}
@@ -258,13 +258,13 @@ export default function CalendarioPage() {
                   </div>
                   {items.length === 0 && <div className="day-empty">—</div>}
                   {items.map((it) => {
-                    const ep = episodesById.get(it.episodeId);
+                    const ep = videosById.get(it.videoId);
                     const title = it.status === "drafting" ? "Redactando…" : it.clip?.tituloInterno ?? "";
                     return (
                       <button key={it.id} className={`chip chip-clip ${it.status === "published" ? "chip-done" : ""} ${open === it.id ? "chip-open" : ""}`} onClick={() => setOpen(open === it.id ? null : it.id)}>
                         <span className="chip-kind">CLIP · {it.time}</span>
                         <span className="chip-title">{title}</span>
-                        <span className="chip-guest">{ep?.guest || ep?.title || ""}</span>
+                        <span className="chip-video">{ep?.title ?? ""}</span>
                       </button>
                     );
                   })}
@@ -277,11 +277,11 @@ export default function CalendarioPage() {
         </section>
       )}
 
-      {/* ───────── EPISODIOS ───────── */}
-      {tab === "episodios" && (
+      {/* ───────── VIDEOS ───────── */}
+      {tab === "videos" && (
         <section className="view">
           <div className="view-head">
-            <h1>Episodios</h1>
+            <h1>Videos</h1>
             <div className="dim">
               {s.lastScanAt ? `Último escaneo del canal: ${fmtDateTime(s.lastScanAt)}` : "Todavía no se escaneó el canal"}
               {" · el cron mira el canal todos los días."}
@@ -292,13 +292,13 @@ export default function CalendarioPage() {
               {busy === "scan" ? "Escaneando…" : "Escanear canal ahora"}
             </button>
             <div className="toolbar-add">
-              <input type="text" placeholder="URL de YouTube para analizar un episodio a mano" value={urlInput} onChange={(e) => setUrlInput(e.target.value)} />
-              <input type="date" value={saleEl} onChange={(e) => setSaleEl(e.target.value)} aria-label="Fecha en que sale el episodio" title="Sale el… (para un video no listado que se publica más adelante). Vacío = hoy." />
+              <input type="text" placeholder="URL de YouTube para analizar un video a mano" value={urlInput} onChange={(e) => setUrlInput(e.target.value)} />
+              <input type="date" value={saleEl} onChange={(e) => setSaleEl(e.target.value)} aria-label="Fecha en que sale el video" title="Sale el… (para un video no listado que se publica más adelante). Vacío = hoy." />
               <button
                 className="btn primary"
                 disabled={!!busy || !urlInput.trim()}
                 onClick={() =>
-                  act({ action: "addEpisode", url: urlInput.trim(), saleEl: saleEl || undefined }, "add").then(() => {
+                  act({ action: "addVideo", url: urlInput.trim(), saleEl: saleEl || undefined }, "add").then(() => {
                     setUrlInput("");
                     setSaleEl("");
                   })
@@ -308,12 +308,12 @@ export default function CalendarioPage() {
               </button>
             </div>
           </div>
-          <div className="episode-list">
-            {s.episodes.length === 0 && <div className="hoy-empty">Todavía no hay episodios. Pegá una URL de YouTube o escaneá el canal.</div>}
-            {[...s.episodes]
+          <div className="video-list">
+            {s.videos.length === 0 && <div className="hoy-empty">Todavía no hay videos. Pegá una URL de YouTube o escaneá el canal.</div>}
+            {[...s.videos]
               .sort((a, b) => b.publishedAt.localeCompare(a.publishedAt))
               .map((ep) => (
-                <EpisodeRow key={ep.videoId} ep={ep} busy={busy} onAct={act} state={s} />
+                <VideoRow key={ep.videoId} ep={ep} busy={busy} onAct={act} state={s} />
               ))}
           </div>
           {detail}
@@ -409,7 +409,7 @@ function Kicker({ children }: { children: ReactNode }) {
 /** Lo que falta configurar para que el motor ande. Desaparece cuando está todo. */
 function SetupNotice({ config }: { config: PublicConfig }) {
   const faltan: string[] = [];
-  if (!config.integrations.gemini) faltan.push("GEMINI_API_KEY (buscar clips en el episodio)");
+  if (!config.integrations.gemini) faltan.push("GEMINI_API_KEY (buscar clips en el video)");
   if (!config.integrations.openai) faltan.push("OPENAI_API_KEY (redactar captions)");
   if (!config.youtubeChannelId) faltan.push("YOUTUBE_CHANNEL_ID (escaneo automático del canal)");
   if (!faltan.length) return null;
@@ -420,7 +420,7 @@ function SetupNotice({ config }: { config: PublicConfig }) {
   );
 }
 
-function TodayCard({ item: it, episode: ep, busy, onAct, onOpen }: { item: Item; episode?: Episode; busy: string | null; onAct: Act; onOpen: () => void }) {
+function TodayCard({ item: it, video: ep, busy, onAct, onOpen }: { item: Item; video?: Video; busy: string | null; onAct: Act; onOpen: () => void }) {
   const [copied, setCopied] = useState<string | null>(null);
   const copy = async (text: string, id: string) => {
     try {
@@ -437,7 +437,7 @@ function TodayCard({ item: it, episode: ep, busy, onAct, onOpen }: { item: Item;
     { id: "youtube", label: "YouTube" },
   ];
   const on = new Set(it.publishedOn ?? []);
-  const head = `CLIP · ${it.time} · ${ep?.guest ?? ""}`;
+  const head = `CLIP · ${it.time}`;
 
   if (it.status === "drafting") {
     return (
@@ -522,7 +522,6 @@ function WeekStrip({ state, today }: { state: State; today: string }) {
   const week = state.items.filter((i) => i.date >= monday && i.date <= sunday).sort((a, b) => a.date.localeCompare(b.date));
   const done = week.filter((i) => i.status === "published").length;
   const drafting = state.items.filter((i) => i.status === "drafting").length;
-  const nextSunday = isoDow(today) === 7 ? today : addDays(today, 7 - isoDow(today));
   return (
     <div className="strip">
       <div className="strip-cell">
@@ -539,8 +538,8 @@ function WeekStrip({ state, today }: { state: State; today: string }) {
         <span className="strip-val">{drafting > 0 ? <><b>{drafting}</b> pieza{drafting > 1 ? "s" : ""}</> : <><b>—</b> nada en cola</>}</span>
       </div>
       <div className="strip-cell">
-        <span className="strip-label">Próximo episodio</span>
-        <span className="strip-val"><b>{DAY_NAMES[isoDow(nextSunday) - 1].slice(0, 3)} {fmtDay(nextSunday)}</b> · entra solo</span>
+        <span className="strip-label">Canal</span>
+        <span className="strip-val">{state.lastScanAt ? <><b>escaneado {fmtDay(state.lastScanAt.slice(0, 10))}</b> · se mira todos los días</> : <><b>—</b> sin escanear todavía</>}</span>
       </div>
     </div>
   );
@@ -932,14 +931,12 @@ function UpcomingList({ state, today, onOpen }: { state: State; today: string; o
       <Kicker>Próximas piezas</Kicker>
       <div className="upcoming-table">
         {upcoming.map((it) => {
-          const ep = state.episodes.find((e) => e.videoId === it.episodeId);
           return (
             <button key={it.id} className="upcoming-row" onClick={() => onOpen(it.id)}>
               <span className="upcoming-date">{DAY_NAMES[isoDow(it.date) - 1].slice(0, 3)} {fmtDay(it.date)}</span>
               <span className="chip-kind faint">CLIP</span>
               <span className="upcoming-title">
                 {it.status === "drafting" ? "Redactando…" : it.clip?.tituloInterno}
-                {ep?.guest ? <span className="dim"> · {ep.guest}</span> : null}
               </span>
               <span className="upcoming-hour">{it.time}</span>
             </button>
@@ -956,7 +953,6 @@ function UpcomingList({ state, today, onOpen }: { state: State; today: string; o
 
 function Ajustes({ state: s, me, busy, onAct }: { state: FullState; me: Me; busy: string | null; onAct: Act }) {
   const [guide, setGuide] = useState(s.settings?.styleGuide ?? "");
-  const [rule, setRule] = useState("");
   useEffect(() => setGuide(s.settings?.styleGuide ?? ""), [s.settings?.styleGuide]);
   const cfg = s.config;
   const Row = ({ ok, label, hint }: { ok: boolean; label: string; hint: string }) => (
@@ -981,42 +977,9 @@ function Ajustes({ state: s, me, busy, onAct }: { state: FullState; me: Me; busy
           </div>
           <div className="card-body">
             <p className="dim small" style={{ marginBottom: 8 }}>
-              Va primero en todos los prompts de redacción: la voz del podcast, las reglas de la casa, lo que funciona y lo que no. Vacío = guía por defecto.
+              Va primero en todos los prompts de planificación y redacción: tu voz, las reglas de la casa, lo que funciona y lo que no. Vacío = guía por defecto.
             </p>
             <textarea className="guide-input" rows={12} value={guide} onChange={(e) => setGuide(e.target.value)} placeholder={s.defaultStyleGuide ?? ""} />
-          </div>
-        </div>
-
-        <div className="card">
-          <div className="card-head">
-            <span className="platform">Reglas de la cuenta</span>
-          </div>
-          <div className="card-body">
-            <p className="dim small" style={{ marginBottom: 8 }}>Órdenes puntuales que se anexan a los prompts del analista y del redactor. Se pueden apagar sin borrarlas.</p>
-            <div className="inline-field" style={{ width: "100%" }}>
-              <input type="text" value={rule} onChange={(e) => setRule(e.target.value)} placeholder="Ej.: los clips de invitados médicos abren siempre con el número" style={{ flex: 1 }} />
-              <button className="copy-btn" disabled={!!busy || !rule.trim()} onClick={() => onAct({ action: "rule", text: rule }, "rule").then(() => setRule(""))}>
-                agregar
-              </button>
-            </div>
-            <div className="insight-list">
-              {(s.settings?.rules ?? []).map((r) => (
-                <div key={r.id} className={`insight ${r.active ? "" : "insight-off"}`}>
-                  <div className="insight-main">
-                    <span className="chip-kind">{r.createdAt.slice(0, 10)}</span>
-                    <div>{r.text}</div>
-                  </div>
-                  <div className="insight-actions">
-                    <button className="link-btn" disabled={!!busy} onClick={() => onAct({ action: "rule", ruleId: r.id, active: !r.active }, "rule")}>
-                      {r.active ? "desactivar" : "activar"}
-                    </button>
-                    <button className="link-btn" disabled={!!busy} onClick={() => onAct({ action: "rule", ruleId: r.id, delete: true }, "rule")}>
-                      borrar
-                    </button>
-                  </div>
-                </div>
-              ))}
-            </div>
           </div>
         </div>
 
@@ -1025,16 +988,15 @@ function Ajustes({ state: s, me, busy, onAct }: { state: FullState; me: Me; busy
             <div className="card-head"><span className="platform">Configuración por entorno</span></div>
             <div className="card-body">
               <p className="dim small" style={{ marginBottom: 8 }}>Las claves nunca se muestran ni se editan acá: van en las variables de entorno del deploy (ver README y .env.example).</p>
-              <Row ok={cfg.integrations.gemini} label="Gemini" hint="GEMINI_API_KEY — sin esto no se analizan episodios" />
+              <Row ok={cfg.integrations.gemini} label="Gemini" hint="GEMINI_API_KEY — sin esto no se analizan videos" />
               <Row ok={cfg.integrations.openai} label="OpenAI" hint="OPENAI_API_KEY — sin esto no se redactan captions" />
               <Row ok={Boolean(cfg.youtubeChannelId)} label="Canal de YouTube" hint="YOUTUBE_CHANNEL_ID — sin esto no hay escaneo automático" />
               <Row ok={cfg.integrations.apify} label="Apify (métricas TikTok/Instagram)" hint="APIFY_TOKEN + TIKTOK_USERNAME / INSTAGRAM_USERNAME — opcional" />
               <Row ok={cfg.integrations.youtubeApi} label="YouTube Data API (métricas)" hint="YOUTUBE_API_KEY — opcional" />
-              <Row ok={cfg.integrations.qstash} label="QStash (checkpoints 5h/24h/7d)" hint="QSTASH_URL + QSTASH_TOKEN — opcional" />
               <Row ok={cfg.integrations.cronSecret} label="Cron" hint="CRON_SECRET — necesario para el cron diario" />
               <Row ok={me.googleConfigured} label="Login con Google" hint={`se entra con ACCESS_CODE · para Google: GOOGLE_CLIENT_ID / GOOGLE_CLIENT_SECRET / AUTH_SECRET / ALLOWED_EMAILS`} />
               <div className="dim small" style={{ marginTop: 10 }}>
-                Marca: <b>{cfg.brandName}</b> · podcast: {cfg.podcastName} · zona horaria: {cfg.timezone} · hora de publicación: {cfg.publishTime} · clips por episodio: {cfg.clipsPerEpisode} · plan semanal: {cfg.weeklyPlan}
+                Marca: <b>{cfg.brandName}</b> · creador: {cfg.creatorName} · zona horaria: {cfg.timezone} · hora de publicación: {cfg.publishTime} · clips por video: {cfg.clipsPerVideo} · plan semanal: {cfg.weeklyPlan}
                 {cfg.brandHashtag ? ` · hashtag: #${cfg.brandHashtag}` : ""} · CTA: “{cfg.ctaText}”
               </div>
             </div>

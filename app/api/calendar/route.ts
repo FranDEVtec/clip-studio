@@ -4,22 +4,21 @@ import { isAuthorized } from "@/lib/auth";
 import { loadState, saveState, logLine, type Metrics, type Platform, type State } from "@/lib/store";
 import { redesDe, redNoAdmitida } from "@/lib/planner";
 import { continueWriting } from "@/lib/chain";
-import { metricsConfigured, scheduleMetricCheckpoints, syncMetrics } from "@/lib/metrics-sync";
+import { metricsConfigured, syncMetrics } from "@/lib/metrics-sync";
 import { modelo } from "@/lib/stats";
 import { publicConfig } from "@/lib/config";
 import { DEFAULT_STYLE_GUIDE } from "@/lib/style";
 import {
-  addEpisodeByUrl,
-  processEpisode,
-  processEpisodeAnalysisOnly,
+  addVideoByUrl,
+  processVideo,
+  processVideoAnalysisOnly,
   processNextPending,
-  reassembleEpisodeItems,
   scheduleMissing,
   pendingDrafts,
   regenerateItem,
-  replanEpisode,
+  replanVideo,
   scanChannel,
-  scheduleEpisode,
+  scheduleVideo,
 } from "@/lib/pipeline";
 
 export const maxDuration = 300;
@@ -46,23 +45,20 @@ function payload(state: State) {
 
 type Action =
   | { action: "scan" }
-  | { action: "addEpisode"; url: string; saleEl?: string }
+  | { action: "addVideo"; url: string; saleEl?: string }
   | { action: "analyze" | "reanalyze"; videoId: string }
   | { action: "reschedule"; videoId: string }
-  | { action: "ignoreEpisode"; videoId: string }
+  | { action: "ignoreVideo"; videoId: string }
   | { action: "publish" | "unpublish" | "delete" | "regenerate"; itemId: string }
   | { action: "move"; itemId: string; date: string; time?: string }
-  | { action: "meta"; videoId: string; guest?: string; episodeNumber?: string }
   | { action: "metrics"; itemId: string; network: Platform; metrics: Partial<Metrics> }
   | { action: "publishedOn"; itemId: string; network: Platform; on: boolean }
   | { action: "retencion"; itemId: string; network: Platform; hookPct?: number; completionPct?: number }
-  | { action: "stretch"; videoId: string; stretch: boolean }
   | { action: "replan"; videoId: string; from?: string }
   | { action: "syncMetrics" }
   | { action: "postUrl"; itemId: string; network: Platform; url: string }
   | { action: "clearPost"; itemId: string; network: Platform }
-  | { action: "styleGuide"; text: string }
-  | { action: "rule"; text?: string; ruleId?: string; active?: boolean; delete?: boolean };
+  | { action: "styleGuide"; text: string };
 
 export async function POST(request: Request) {
   if (!(await ok(request))) return NextResponse.json({ error: "No autorizado" }, { status: 401 });
@@ -70,35 +66,35 @@ export async function POST(request: Request) {
   const body = (await request.json()) as Action;
   const state = await loadState();
   // Acciones que reservan piezas: después redactan lo que puedan y encadenan el resto.
-  const reserves = ["scan", "addEpisode", "analyze", "reschedule", "stretch"].includes(body.action);
+  const reserves = ["scan", "addVideo", "analyze", "reschedule"].includes(body.action);
   try {
     switch (body.action) {
       case "scan": {
         const queued = await scanChannel(state);
-        logLine(state, `Escaneo manual: ${queued} episodio(s) nuevo(s).`);
+        logLine(state, `Escaneo manual: ${queued} video(s) nuevo(s).`);
         await saveState(state);
         await processNextPending(state);
         await scheduleMissing(state);
         break;
       }
-      case "addEpisode": {
-        const ep = await addEpisodeByUrl(state, body.url, { saleEl: body.saleEl || undefined });
+      case "addVideo": {
+        const ep = await addVideoByUrl(state, body.url, { saleEl: body.saleEl || undefined });
         await saveState(state);
-        if (ep.status === "pending") await processEpisode(state, ep);
+        if (ep.status === "pending") await processVideo(state, ep);
         break;
       }
       case "analyze": {
-        const ep = state.episodes.find((e) => e.videoId === body.videoId);
-        if (!ep) throw new Error("Episodio no encontrado");
+        const ep = state.videos.find((e) => e.videoId === body.videoId);
+        if (!ep) throw new Error("Video no encontrado");
         ep.status = "pending";
         await saveState(state);
-        await processEpisode(state, ep);
+        await processVideo(state, ep);
         break;
       }
       case "reanalyze": {
-        const ep = state.episodes.find((e) => e.videoId === body.videoId);
-        if (!ep) throw new Error("Episodio no encontrado");
-        await processEpisodeAnalysisOnly(state, ep);
+        const ep = state.videos.find((e) => e.videoId === body.videoId);
+        if (!ep) throw new Error("Video no encontrado");
+        await processVideoAnalysisOnly(state, ep);
         break;
       }
       // Carga en tanda de la retención. NO usa "metrics" porque esa acción
@@ -120,9 +116,9 @@ export async function POST(request: Request) {
         break;
       }
       case "reschedule": {
-        const ep = state.episodes.find((e) => e.videoId === body.videoId);
-        if (!ep) throw new Error("Episodio no encontrado");
-        await scheduleEpisode(state, ep);
+        const ep = state.videos.find((e) => e.videoId === body.videoId);
+        if (!ep) throw new Error("Video no encontrado");
+        await scheduleVideo(state, ep);
         break;
       }
       case "publishedOn": {
@@ -144,8 +140,6 @@ export async function POST(request: Request) {
           it.status = "planned";
           it.publishedAt = undefined;
         }
-        // Apenas hay una red marcada se programan los checkpoints de métricas (5h / 24h / 7d).
-        if (set.size > 0) await scheduleMetricCheckpoints(state, it, origin);
         break;
       }
       case "publish":
@@ -154,25 +148,24 @@ export async function POST(request: Request) {
         if (!it) throw new Error("Ítem no encontrado");
         it.status = body.action === "publish" ? "published" : "planned";
         it.publishedAt = body.action === "publish" ? new Date().toISOString() : undefined;
-        if (body.action === "publish") await scheduleMetricCheckpoints(state, it, origin);
         break;
       }
-      // Un video que entró como episodio y no lo es: se ignora y se sueltan sus
-      // piezas no publicadas. Lo publicado queda: ya está en la calle.
-      case "ignoreEpisode": {
-        const ep = state.episodes.find((e) => e.videoId === body.videoId);
-        if (!ep) throw new Error("Episodio no encontrado");
+      // Un video que no hay que clipear: se ignora y se sueltan sus piezas no
+      // publicadas. Lo publicado queda: ya está en la calle.
+      case "ignoreVideo": {
+        const ep = state.videos.find((e) => e.videoId === body.videoId);
+        if (!ep) throw new Error("Video no encontrado");
         ep.status = "ignored";
         const antes = state.items.length;
-        state.items = state.items.filter((i) => i.episodeId !== ep.videoId || i.status === "published");
-        logLine(state, `Episodio ignorado: "${ep.title}" (${ep.videoId}); ${antes - state.items.length} pieza(s) no publicadas quitadas del calendario.`);
+        state.items = state.items.filter((i) => i.videoId !== ep.videoId || i.status === "published");
+        logLine(state, `Video ignorado: "${ep.title}" (${ep.videoId}); ${antes - state.items.length} pieza(s) no publicadas quitadas del calendario.`);
         break;
       }
       case "delete": {
         const idx = state.items.findIndex((i) => i.id === body.itemId);
         if (idx < 0) throw new Error("Ítem no encontrado");
         const [it] = state.items.splice(idx, 1);
-        const ep = state.episodes.find((e) => e.videoId === it.episodeId);
+        const ep = state.videos.find((e) => e.videoId === it.videoId);
         if (ep?.scheduled) ep.scheduled.clips = Math.max(0, ep.scheduled.clips - 1);
         logLine(state, `Ítem borrado: clip del ${it.date}.`);
         break;
@@ -202,14 +195,6 @@ export async function POST(request: Request) {
         state.items.sort((a, b) => a.date.localeCompare(b.date) || a.time.localeCompare(b.time));
         break;
       }
-      case "meta": {
-        const ep = state.episodes.find((e) => e.videoId === body.videoId);
-        if (!ep) throw new Error("Episodio no encontrado");
-        if (body.guest !== undefined) ep.guest = body.guest.trim().slice(0, 120);
-        if (body.episodeNumber !== undefined) ep.episodeNumber = body.episodeNumber.replace(/\D/g, "").slice(0, 6);
-        reassembleEpisodeItems(state, ep);
-        break;
-      }
       case "metrics": {
         const it = state.items.find((i) => i.id === body.itemId);
         if (!it) throw new Error("Ítem no encontrado");
@@ -236,21 +221,10 @@ export async function POST(request: Request) {
         logLine(state, `Métricas ${body.network} cargadas para el clip del ${it.date}.`);
         break;
       }
-      case "stretch": {
-        const ep = state.episodes.find((e) => e.videoId === body.videoId);
-        if (!ep) throw new Error("Episodio no encontrado");
-        ep.stretch = body.stretch;
-        replanEpisode(state, ep);
-        if (body.stretch && ep.status === "analyzed") {
-          await saveState(state);
-          await scheduleEpisode(state, ep);
-        }
-        break;
-      }
       case "replan": {
-        const ep = state.episodes.find((e) => e.videoId === body.videoId);
-        if (!ep) throw new Error("Episodio no encontrado");
-        replanEpisode(state, ep, body.from);
+        const ep = state.videos.find((e) => e.videoId === body.videoId);
+        if (!ep) throw new Error("Video no encontrado");
+        replanVideo(state, ep, body.from);
         break;
       }
       case "syncMetrics":
@@ -270,21 +244,6 @@ export async function POST(request: Request) {
       case "styleGuide": {
         state.settings = { ...(state.settings ?? {}), styleGuide: String(body.text ?? "").slice(0, 20_000) };
         logLine(state, "Guía de estilo actualizada.");
-        break;
-      }
-      case "rule": {
-        const rules = [...(state.settings?.rules ?? [])];
-        if (body.ruleId) {
-          const idx = rules.findIndex((r) => r.id === body.ruleId);
-          if (idx < 0) throw new Error("Regla no encontrada");
-          if (body.delete) rules.splice(idx, 1);
-          else if (typeof body.active === "boolean") rules[idx] = { ...rules[idx], active: body.active };
-        } else {
-          const text = String(body.text ?? "").trim().slice(0, 600);
-          if (!text) throw new Error("La regla está vacía");
-          rules.push({ id: `rule-${Date.now()}`, text, active: true, createdAt: new Date().toISOString() });
-        }
-        state.settings = { ...(state.settings ?? {}), rules };
         break;
       }
       default:

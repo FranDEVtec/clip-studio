@@ -1,10 +1,10 @@
-// Detección de episodios nuevos por el RSS público del canal.
+// Detección de videos nuevos por el RSS público del canal.
 //
 // Por qué RSS y no la Data API: no necesita clave ni OAuth (el refresh token de
 // la Data API caducaba cada 7 días en Vercel y tumbó la web app de carruseles),
 // y desde una IP de datacenter funciona sin problema — a diferencia de bajar el
 // video o los subtítulos, que YouTube bloquea. Trae los últimos 15 videos, que
-// para un podcast semanal es más que suficiente.
+// para un canal que sube una o dos veces por semana es más que suficiente.
 
 import { YOUTUBE_CHANNEL_ID } from "@/lib/config";
 
@@ -13,7 +13,7 @@ export type FeedVideo = { videoId: string; title: string; publishedAt: string; u
 export async function fetchChannelFeed(channelId = YOUTUBE_CHANNEL_ID): Promise<FeedVideo[]> {
   if (!channelId) throw new Error("Falta YOUTUBE_CHANNEL_ID (el id UC… del canal)");
   const res = await fetch(`https://www.youtube.com/feeds/videos.xml?channel_id=${encodeURIComponent(channelId)}`, {
-    headers: { "User-Agent": "Mozilla/5.0 (podcast-clip-studio)" },
+    headers: { "User-Agent": "Mozilla/5.0 (clip-studio)" },
     cache: "no-store",
   });
   if (!res.ok) throw new Error(`RSS del canal devolvió ${res.status}`);
@@ -46,7 +46,7 @@ function decodeXml(s: string): string {
 
 /**
  * Duración del video en segundos, leída de la página pública (`lengthSeconds`). El RSS no la
- * trae, y un canal que sube también cortes del episodio los haría pasar por episodios nuevos.
+ * trae, y un canal que sube también cortes del video los haría pasar por videos nuevos.
  * Devuelve null si la página no se pudo leer.
  */
 export async function fetchVideoLengthSec(videoId: string): Promise<number | null> {

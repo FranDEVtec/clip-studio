@@ -6,7 +6,7 @@ Open a private security advisory on GitHub (Security → Advisories → "Report 
 
 ## Security model
 
-This is a single-tenant tool: one deployment serves one podcast and its team. There is no multi-user isolation inside a deployment.
+This is a single-tenant tool: one deployment serves one creator and their team. There is no multi-user isolation inside a deployment. The public landing (`LANDING_MODE=1`) is static and stores nothing.
 
 **Authentication.** Two mechanisms, both fail-closed:
 
@@ -17,7 +17,7 @@ If neither is configured, every protected route returns 401 and the login page s
 
 **Cron.** `/api/cron/scan` accepts `Authorization: Bearer <CRON_SECRET>` (what Vercel Cron sends) or a valid session/code. Set `CRON_SECRET`; the self-invoking chain (`step=write`, `step=metrics`) uses it too.
 
-**Secrets never leave the server.** API keys (Gemini, OpenAI, Apify, YouTube, QStash, Google) are read from environment variables at call time. `publicConfig()` only exposes booleans ("configured or not") and non-secret settings. Nothing under `NEXT_PUBLIC_*` is secret by construction.
+**Secrets never leave the server.** API keys (Gemini, OpenAI, Apify, YouTube, Google) are read from environment variables at call time. `publicConfig()` only exposes booleans ("configured or not") and non-secret settings. Nothing under `NEXT_PUBLIC_*` is secret by construction.
 
 **Database.** All queries are parameterised (tagged templates for both the Neon HTTP driver and `pg`). The state is small and fully upserted in one transaction.
 
@@ -30,4 +30,4 @@ If neither is configured, every protected route returns 401 and the login page s
 - Generate `AUTH_SECRET` and `CRON_SECRET` with `openssl rand -base64 32`.
 - Prefer Google login with an explicit `ALLOWED_EMAILS` list over the access code.
 - Keep `DATABASE_URL` and all API keys in the platform's encrypted env store, never in the repo.
-- Rotate any key you paste into a chat, a screenshot or a ticket.
+- Rotate any key you paste into a chat, a screenshot or a ticket. `npm run setup` never prints a key back; the onboarding runbook asks agents not to either.

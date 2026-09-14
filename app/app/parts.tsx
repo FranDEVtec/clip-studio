@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import type { Episode, Item, Metrics, Platform, State } from "@/lib/store";
+import type { Video, Item, Metrics, Platform, State } from "@/lib/store";
 
 export const CODE_KEY = "studio-access-code";
 export const DAY_NAMES = ["Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado", "Domingo"];
@@ -68,7 +68,7 @@ export type Act = (b: Record<string, unknown>, label: string) => Promise<void>;
 
 export function ItemDetail({
   item: it,
-  episode: ep,
+  video: ep,
   busy,
   copied,
   onCopy,
@@ -76,7 +76,7 @@ export function ItemDetail({
   onClose,
 }: {
   item: Item;
-  episode?: Episode;
+  video?: Video;
   busy: string | null;
   copied: string | null;
   onCopy: (t: string, which: string) => void;
@@ -103,7 +103,6 @@ export function ItemDetail({
         `PUBLICAR: ${it.date} ${it.time} hs`,
         "",
         ...(it.clip.pieces.hook_edicion ? [`TITULAR EN PANTALLA: ${it.clip.pieces.hook_edicion}`, ""] : []),
-        ...(it.clip.pieces.credencial ? [`INVITADO: ${ep?.guest ?? ""} · ${it.clip.pieces.credencial}`, ""] : []),
         "CAPTION TIKTOK:",
         it.clip.captionTikTok ?? it.clip.caption,
         "",
@@ -119,19 +118,13 @@ export function ItemDetail({
           <div className="kicker">
             Clip · {DAY_NAMES[isoDow(it.date) - 1]} {fmtDay(it.date)} · {it.time} hs
             {it.status === "published" && " · PUBLICADO"}
-            {it.recycleOf && " · REPOST"}
           </div>
           <h2 className="detail-title">{ep?.title}</h2>
-          <div className="detail-sub">
-            {ep?.guest ? `Invitado: ${ep.guest}` : "Invitado sin confirmar"}
-            {ep?.episodeNumber ? ` · Episodio ${ep.episodeNumber}` : ""}
-            {ep && (
-              <>
-                {" · "}
-                <a href={ep.url} target="_blank" rel="noreferrer">YouTube ↗</a>
-              </>
-            )}
-          </div>
+          {ep && (
+            <div className="detail-sub">
+              <a href={ep.url} target="_blank" rel="noreferrer">YouTube ↗</a>
+            </div>
+          )}
         </div>
         <button className="link-btn" onClick={onClose}>cerrar ✕</button>
       </div>
@@ -172,7 +165,7 @@ export function ItemDetail({
         <div className="results">
           <div className="card">
             <div className="card-head">
-              <span className="platform">Corte del episodio</span>
+              <span className="platform">Corte del video</span>
               <Copy text={`${fmtTime(it.clip.inicio)} - ${fmtTime(it.clip.fin)}`} id="ts" />
             </div>
             <div className="card-body">
@@ -211,12 +204,6 @@ export function ItemDetail({
               </div>
               <div className="card-body">
                 <div className="hook-ed">{it.clip.pieces.hook_edicion}</div>
-                {it.clip.pieces.credencial && (
-                  <div className="mini-copy-row" style={{ marginTop: 10 }}>
-                    <span className="dim small">Invitado: <b>{ep?.guest ?? ""}</b> · {it.clip.pieces.credencial}</span>
-                    <Copy text={`${it.clip.pieces.credencial}\n${ep?.guest ?? ""}`} id="lt" label="copiar nombre y credencial" />
-                  </div>
-                )}
               </div>
             </div>
           )}
@@ -262,16 +249,10 @@ export function ItemDetail({
 
 // ─────────────────────────────────────────────────────────────────────────────
 
-export function EpisodeRow({ ep, busy, onAct, state }: { ep: Episode; busy: string | null; onAct: Act; state: State }) {
-  const [guest, setGuest] = useState(ep.guest ?? "");
-  const [num, setNum] = useState(ep.episodeNumber ?? "");
+export function VideoRow({ ep, busy, onAct, state }: { ep: Video; busy: string | null; onAct: Act; state: State }) {
   const [showClips, setShowClips] = useState(false);
-  useEffect(() => {
-    setGuest(ep.guest ?? "");
-    setNum(ep.episodeNumber ?? "");
-  }, [ep]);
-  const nItems = state.items.filter((i) => i.episodeId === ep.videoId).length;
-  const statusLabel: Record<Episode["status"], string> = {
+  const nItems = state.items.filter((i) => i.videoId === ep.videoId).length;
+  const statusLabel: Record<Video["status"], string> = {
     pending: "en cola",
     analyzing: "analizando…",
     analyzed: `analizado · ${nItems} piezas`,
@@ -279,9 +260,9 @@ export function EpisodeRow({ ep, busy, onAct, state }: { ep: Episode; busy: stri
     ignored: "no analizado",
   };
   return (
-    <div className={`episode-row ep-${ep.status}`}>
-      <div className="episode-main">
-        <div className="episode-title">
+    <div className={`video-row ep-${ep.status}`}>
+      <div className="video-main">
+        <div className="video-title">
           <a href={ep.url} target="_blank" rel="noreferrer">{ep.title}</a>
         </div>
         <div className="dim small">
@@ -289,16 +270,7 @@ export function EpisodeRow({ ep, busy, onAct, state }: { ep: Episode; busy: stri
           {ep.error && <span className="err"> — {ep.error}</span>}
         </div>
       </div>
-      <div className="episode-actions">
-        <input type="text" placeholder="invitado" value={guest} onChange={(e) => setGuest(e.target.value)} />
-        <input type="text" placeholder="# ep" value={num} onChange={(e) => setNum(e.target.value)} style={{ width: 64 }} />
-        <button
-          className="copy-btn"
-          disabled={!!busy || (guest === (ep.guest ?? "") && num === (ep.episodeNumber ?? ""))}
-          onClick={() => onAct({ action: "meta", videoId: ep.videoId, guest, episodeNumber: num }, `meta:${ep.videoId}`)}
-        >
-          guardar
-        </button>
+      <div className="video-actions">
         {(ep.status === "ignored" || ep.status === "error" || ep.status === "pending") && (
           <button className="copy-btn ghost" disabled={!!busy} onClick={() => onAct({ action: "analyze", videoId: ep.videoId }, `an:${ep.videoId}`)}>
             {busy === `an:${ep.videoId}` ? "Analizando…" : "Analizar y agendar"}
@@ -312,13 +284,9 @@ export function EpisodeRow({ ep, busy, onAct, state }: { ep: Episode; busy: stri
             <button className="copy-btn ghost" disabled={!!busy} onClick={() => onAct({ action: "replan", videoId: ep.videoId }, "rp")}>
               re-planificar desde hoy
             </button>
-            <button className="copy-btn ghost" disabled={!!busy} onClick={() => onAct({ action: "reanalyze", videoId: ep.videoId }, `rean:${ep.videoId}`)} title="Vuelve a pasar el episodio por Gemini sin tocar el calendario">
+            <button className="copy-btn ghost" disabled={!!busy} onClick={() => onAct({ action: "reanalyze", videoId: ep.videoId }, `rean:${ep.videoId}`)} title="Vuelve a pasar el video por Gemini sin tocar el calendario">
               {busy === `rean:${ep.videoId}` ? "Analizando…" : "re-analizar"}
             </button>
-            <label className="toggle" title="No hay episodio la semana que viene: estirar las piezas a 14 días y sumar clips">
-              <input type="checkbox" checked={!!ep.stretch} disabled={!!busy} onChange={(e) => onAct({ action: "stretch", videoId: ep.videoId, stretch: e.target.checked }, "st")} />
-              <span>Semana extendida</span>
-            </label>
             {ep.analysis && (
               <button className="link-btn" onClick={() => setShowClips(!showClips)}>
                 {showClips ? "ocultar tramos" : `ver ${ep.analysis.clips.length} tramos`}
@@ -330,9 +298,9 @@ export function EpisodeRow({ ep, busy, onAct, state }: { ep: Episode; busy: stri
           <button
             className="link-btn"
             disabled={!!busy}
-            title="Marca el video como no-episodio y saca sus piezas no publicadas del calendario"
+            title="Deja el video sin clipear y saca sus piezas no publicadas del calendario"
             onClick={() => {
-              if (window.confirm("¿Ignorar este video? Sus piezas no publicadas salen del calendario.")) onAct({ action: "ignoreEpisode", videoId: ep.videoId }, `ig:${ep.videoId}`);
+              if (window.confirm("¿Ignorar este video? Sus piezas no publicadas salen del calendario.")) onAct({ action: "ignoreVideo", videoId: ep.videoId }, `ig:${ep.videoId}`);
             }}
           >
             ignorar
@@ -344,7 +312,7 @@ export function EpisodeRow({ ep, busy, onAct, state }: { ep: Episode; busy: stri
         <div className="candidates">
           {ep.analysis.tesis && <div className="dim small" style={{ marginBottom: 8 }}>Tesis: {ep.analysis.tesis}</div>}
           {ep.analysis.clips.map((c, i) => {
-            const usado = state.items.some((it) => it.episodeId === ep.videoId && (it.clip ? it.clip.inicio === c.inicio : it.draft?.candidateIndex === i));
+            const usado = state.items.some((it) => it.videoId === ep.videoId && (it.clip ? it.clip.inicio === c.inicio : it.draft?.candidateIndex === i));
             return (
               <div key={i} className={`candidate ${usado ? "used" : ""}`}>
                 <span className="cand-score">{c.puntaje}</span>
@@ -445,7 +413,7 @@ export function Tracking({ item: it, busy, onAct }: { item: Item; busy: string |
         </div>
       ) : (
         <div className="dim small" style={{ marginBottom: 10 }}>
-          Sin métricas todavía. Con Apify configurado, se traen solas después de publicar (5 h, 24 h y 7 días si hay QStash; si no, con el sync diario). Si el post no se emparejó, pegá la URL arriba.
+          Sin métricas todavía. Con Apify configurado, se traen solas con el sync diario después de publicar. Si el post no se emparejó, pegá la URL arriba.
         </div>
       )}
       <div className="retention">

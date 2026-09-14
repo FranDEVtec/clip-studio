@@ -126,14 +126,12 @@ const NETS: Platform[] = ["tiktok", "instagram"];
  * empareja con una pieza del calendario —2 de 30 en TikTok— y antes eso lo
  * dejaba afuera del modelo. Un post suelto igual responde casi todas las
  * palancas: red, formato, día, hora, duración, audio, hashtags, slides y
- * colaboración salen del post mismo. Las dos que necesitan la pieza (señal
- * del hook e invitado) devuelven null y esa observación no cuenta para ESA
- * palanca, que es exactamente lo que corresponde.
+ * colaboración salen del post mismo. La que necesita la pieza (señal del
+ * hook) devuelve null y esa observación no cuenta para ESA palanca, que es
+ * exactamente lo que corresponde.
  */
 type Obs = {
   it?: Item;
-  /** Invitado del episodio de la pieza, si se sabe. */
-  guest?: string;
   fecha: string;
   kind: "clip" | "carousel" | "highlight";
   red: Platform;
@@ -155,7 +153,6 @@ type Obs = {
 function observaciones(state: State): Obs[] {
   const out: Obs[] = [];
   const items = new Map(state.items.map((i) => [i.id, i]));
-  const guestOf = (it?: Item) => (it ? state.episodes.find((e) => e.videoId === it.episodeId)?.guest || undefined : undefined);
   // Cubierto: (pieza, red) que ya aporta un post guardado. Evita contar dos
   // veces lo mismo cuando la pieza también tiene las métricas copiadas.
   const cubierto = new Set<string>();
@@ -167,7 +164,6 @@ function observaciones(state: State): Obs[] {
     if (it) cubierto.add(`${it.id}:${p.network}`);
     out.push({
       it,
-      guest: guestOf(it),
       fecha: p.publishedAt.slice(0, 10),
       kind: it?.kind ?? p.kind,
       red: p.network,
@@ -185,7 +181,7 @@ function observaciones(state: State): Obs[] {
     for (const red of NETS) {
       const m = it.metrics?.[red];
       if (!m?.views || cubierto.has(`${it.id}:${red}`)) continue;
-      out.push({ it, guest: guestOf(it), fecha: it.date, kind: it.kind, red, vistas: m.views, saves: m.saves, shares: m.shares === undefined && m.reposts === undefined ? undefined : (m.shares ?? 0) + (m.reposts ?? 0), comments: m.comments, m });
+      out.push({ it, fecha: it.date, kind: it.kind, red, vistas: m.views, saves: m.saves, shares: m.shares === undefined && m.reposts === undefined ? undefined : (m.shares ?? 0) + (m.reposts ?? 0), comments: m.comments, m });
     }
   }
   return out;
@@ -229,12 +225,11 @@ const DIMENSIONES: Dim[] = [
   { id: "duracion", nombre: "Duración real", pregunta: "¿60-120 s rinde más que los cortos?", valor: (o) => bucketDuracion(o) },
   { id: "hora", nombre: "Hora de publicación", pregunta: "¿Las 21 hs son realmente el mejor momento?", valor: (o) => bucketHora(o) },
   { id: "audio", nombre: "Audio", pregunta: "¿El audio original rinde más que el de la plataforma?", valor: (o) => (o.m?.audioOriginal === undefined ? null : o.m.audioOriginal ? "original / propio" : "sonido de la plataforma") },
-  { id: "colab", nombre: "Colaboración con el invitado", pregunta: "¿Publicar en colaboración presta alcance?", valor: (o) => (o.m?.colaboracion === undefined ? null : o.m.colaboracion ? "en colaboración" : "solos") },
+  { id: "colab", nombre: "Colaboración", pregunta: "¿Publicar en colaboración con otra cuenta presta alcance?", valor: (o) => (o.m?.colaboracion === undefined ? null : o.m.colaboracion ? "en colaboración" : "solos") },
   { id: "hashtags", nombre: "Cantidad de hashtags", pregunta: "¿5 hashtags es el número correcto?", valor: (o) => (o.m?.hashtags ? (o.m.hashtags.length <= 3 ? "3 o menos" : o.m.hashtags.length <= 5 ? "4-5" : "6 o más") : null) },
   { id: "slides", nombre: "Slides del carrusel", pregunta: "¿Cuántas slides se guardan más?", valor: (o) => (o.m?.slides && o.m.slides > 1 ? (o.m.slides <= 5 ? "hasta 5" : o.m.slides <= 7 ? "6-7" : "8 o más") : null) },
   { id: "dia", nombre: "Día de publicación", pregunta: "¿Hay días que rinden mejor?", valor: (o) => diaSemana(o.fecha) },
   { id: "senal", nombre: "Señal del hook", pregunta: "¿El hook con dato duro se guarda más que el genérico?", valor: (o) => (o.it ? ["sin señal costosa", "1 señal", "2 señales", "3 señales"][senalCostosa(o.it)] : null) },
-  { id: "invitado", nombre: "Invitado", pregunta: "¿Qué invitados traccionan?", valor: (o) => o.guest ?? null },
 ];
 
 /** Cuántas vistas más harían falta para separar los dos mejores brazos. */
