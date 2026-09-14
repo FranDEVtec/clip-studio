@@ -3,6 +3,14 @@
   "version": "0.1.0",
   "private": true,
   "license": "MIT",
+  "author": "Francisco Bottaro (https://github.com/FranDEVtec)",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/FranDEVtec/podcast-clip-studio.git"
+  },
+  "engines": {
+    "node": ">=20"
+  },
   "scripts": {
     "dev": "next dev",
     "build": "next build",

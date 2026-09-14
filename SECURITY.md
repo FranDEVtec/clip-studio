@@ -2,7 +2,7 @@
 
 ## Reporting a vulnerability
 
-Open a private security advisory on GitHub (Security → Advisories → "Report a vulnerability") or email the maintainer listed in `package.json`. Please do not open a public issue for security problems. You will get an acknowledgement within a few days.
+Open a private security advisory on GitHub (Security → Advisories → "Report a vulnerability") or contact the maintainer linked in `package.json`. Please do not open a public issue for security problems. You will get an acknowledgement within a few days.
 
 ## Security model
 

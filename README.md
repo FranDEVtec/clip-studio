@@ -29,7 +29,7 @@ Next.js 15 (App Router) · React 19 · TypeScript · Postgres (Neon's HTTP drive
 ## Quick start
 
 ```bash
-git clone <this repo> && cd podcast-clip-studio
+git clone https://github.com/FranDEVtec/podcast-clip-studio.git && cd podcast-clip-studio
 npm install
 cp .env.example .env.local
 ```
