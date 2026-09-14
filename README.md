@@ -39,7 +39,8 @@ Next.js 15 (App Router) · React 19 · TypeScript · Postgres (Neon's HTTP drive
 ## Manual setup
 
 ```bash
-git clone https://github.com/FranDEVtec/clip-studio.git && cd clip-studio
+git clone --depth 1 https://github.com/FranDEVtec/clip-studio.git && cd clip-studio
+rm -rf .git            # Vercel blocks CLI deploys whose commit author isn't a member of your account
 npm install
 npm run setup          # asks for channel, name, handles and keys; validates each one; writes .env.local
 ```
