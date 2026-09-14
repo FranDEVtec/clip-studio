@@ -138,7 +138,7 @@ export async function analyzeVideo(youtubeUrl: string, videoTitle = ""): Promise
     } catch (err) {
       lastErr = err;
       const msg = err instanceof Error ? err.message : String(err);
-      if (attempt < 3 && /503|429|overloaded|UNAVAILABLE|RESOURCE_EXHAUSTED|high demand/i.test(msg)) {
+      if (attempt < 3 && /503|429|overloaded|UNAVAILABLE|RESOURCE_EXHAUSTED|high demand|fetch failed|ECONNRESET|ETIMEDOUT/i.test(msg)) {
         await sleep(BACKOFF[attempt]);
         continue;
       }
