@@ -43,6 +43,18 @@ export const LANDING_MODE = env("LANDING_MODE") === "1";
 /** URL del repo, para la landing y los créditos. */
 export const REPO_URL = "https://github.com/FranDEVtec/clip-studio";
 
+// ── Cobro (sólo en la landing) ─────────────────────────────────────────────
+// La instalación asistida se cobra con Mercado Pago (MP_ACCESS_TOKEN crea una
+// preferencia de Checkout Pro en /api/pay) o con cualquier link de pago fijo
+// (PAY_URL: Stripe Payment Link, link de pago de Mercado Pago, Lemon Squeezy…).
+// Si no hay ninguno, el botón lleva al contacto.
+export const PAY_PRICE = Number(env("PAY_PRICE", "0"));
+export const PAY_CURRENCY = env("PAY_CURRENCY", "ARS").toUpperCase();
+export const PAY_URL = env("PAY_URL");
+export const PAY_CONFIGURED = Boolean(PAY_URL) || Boolean(process.env.MP_ACCESS_TOKEN && PAY_PRICE > 0);
+/** Adónde escribe la gente después de pagar (o si el pago no está configurado). */
+export const CONTACT_URL = env("NEXT_PUBLIC_CONTACT_URL", "https://instagram.com/franbottaroo");
+
 /** Lo que la UI puede saber de la configuración. Nunca incluye secretos. */
 export function publicConfig() {
   return {

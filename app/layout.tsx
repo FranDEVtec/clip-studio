@@ -1,16 +1,18 @@
 import type { Metadata, Viewport } from "next";
 import { Archivo, Archivo_Black, IBM_Plex_Mono } from "next/font/google";
-import { BRAND_ACCENT, BRAND_NAME } from "@/lib/config";
+import { BRAND_ACCENT, BRAND_NAME, LANDING_MODE } from "@/lib/config";
 import "./globals.css";
 
 const archivo = Archivo({ subsets: ["latin"], variable: "--font-body" });
 const archivoBlack = Archivo_Black({ subsets: ["latin"], weight: "400", variable: "--font-display" });
 const plexMono = IBM_Plex_Mono({ subsets: ["latin"], weight: ["400", "500"], variable: "--font-mono" });
 
+// La landing pública se indexa; la app de cada creador, no.
 export const metadata: Metadata = {
   title: BRAND_NAME,
-  description: "Motor de clips y tracker de métricas para creadores de YouTube",
-  robots: { index: false, follow: false },
+  description: "Cada video que subís a YouTube se convierte en una semana de clips. Motor open source: encuentra los mejores momentos, escribe titular y captions verificados y aprende de tus métricas.",
+  robots: LANDING_MODE ? { index: true, follow: true } : { index: false, follow: false },
+  openGraph: { title: BRAND_NAME, description: "Cada video que subís a YouTube se convierte en una semana de clips.", type: "website" },
 };
 
 export const viewport: Viewport = {

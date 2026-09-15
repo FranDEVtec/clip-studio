@@ -89,7 +89,9 @@ Create an OAuth client (Web) in Google Cloud Console with redirect URI `https://
 
 ### Hosting the public landing
 
-The deploy that shares the project sets `LANDING_MODE=1`: `/` renders the landing (what it is, why to trust it, the onboarding prompt) and the app lives at `/app`. The landing stores nothing and needs no database.
+The deploy that shares the project sets `LANDING_MODE=1`: `/` renders the landing (what it is, why to trust it, pricing, the onboarding prompt, FAQ) and the app lives at `/app`. The landing stores nothing and needs no database.
+
+**Charging for assisted installs.** The pricing section offers a paid "I install it for you" tier. Set `MP_ACCESS_TOKEN` (Mercado Pago production access token), `PAY_PRICE` and `PAY_CURRENCY` and `/api/pay` creates a Checkout Pro preference per click and redirects to it; Mercado Pago sends people back to `/gracias`. Or set `PAY_URL` to any fixed payment link (Stripe Payment Link, Mercado Pago link, Lemon Squeezy). With neither, the button links to `NEXT_PUBLIC_CONTACT_URL`.
 
 ## Commands
 
