@@ -18,7 +18,7 @@ Prefer to do it by hand? Same steps, below.
 
 ## What it does
 
-**Clip search.** A daily cron reads the channel's public RSS feed (no OAuth). When a new video appears, Gemini watches it end-to-end by URL (no download) and returns, as facts only: topic, thesis, the 3-5 axes of the video, and the 10 best 60-120 s segments with verbatim transcript, exact quotes with timestamps, an opening line, why it works, and the question people are already asking that this segment answers. Shorts and videos under 5 minutes are skipped.
+**Clip search.** A daily cron reads the channel's public RSS feed (no OAuth). When a new video appears, Gemini watches it end-to-end by URL (no download) and returns, as facts only: topic, thesis, the 3-5 axes of the video, and the 10 best 60-120 s segments with verbatim transcript, exact quotes with timestamps, an opening line, why it works, and the question people are already asking that this segment answers. Timestamps are calibrated against the real video length and then refined with a short second pass per published clip (±3 s), because over a whole video the model's clock drifts. Shorts and videos under 5 minutes are skipped.
 
 **Planning.** A planner picks which segments become clips, in what order and from which angle, so two consecutive days never say the same thing. Each video owns its week; the default plan is one clip a day, Monday to Saturday.
 
@@ -51,7 +51,7 @@ npm run setup          # asks for channel, name, handles and keys; validates eac
 |---|---|
 | `DATABASE_URL` | Neon or any Postgres. Tables are created on first request. Empty until you create the database. |
 | `ACCESS_CODE` | Generated. The app's password. Or configure Google login (below). |
-| `GEMINI_API_KEY` | [Google AI Studio](https://aistudio.google.com/apikey), free. Watches the video. |
+| `GEMINI_API_KEY` | [Google AI Studio](https://aistudio.google.com/apikey), free (20 requests a day per model: about three videos a day). Watches the video. Falls back to `gemini-flash-lite-latest` when the main model is overloaded. |
 | `OPENAI_API_KEY` | Plans the week and writes captions. `OPENAI_MODEL` defaults to `gpt-5`. |
 | `YOUTUBE_CHANNEL_ID` | Resolved from your channel URL. |
 | `CREATOR_NAME`, `CHANNEL_DESCRIPTION`, `CONTENT_LANGUAGE` | Go into the prompts. |

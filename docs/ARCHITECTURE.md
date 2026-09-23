@@ -34,7 +34,8 @@ YouTube RSS ──▶ scanChannel ──▶ Video(pending)
 | `lib/db.ts` | `sql()` tagged template + `transaction()`. Neon HTTP driver when the URL is Neon, `pg` Pool otherwise. `ensureSchema()` creates three tables: `videos`, `items`, `meta`. |
 | `lib/store.ts` | The `State` type (videos, items, settings, posts, log) and `loadState` / `saveState` / `mergeSave`. Each entity is a row with key columns plus a JSONB `data`. **`saveState` writes `meta` field by field: a new State field must be added in both `loadState` and `saveState` or it is silently dropped.** |
 | `lib/youtube.ts` | Channel RSS, video length from the watch page, oEmbed title, URL parsing. No API key. |
-| `lib/video-engine.ts` | Stage 1. Gemini watches the video by URL (`fps 0.2`, low media resolution) with a JSON schema. Filters clips to 45-140 s and sorts by score. |
+| `lib/video-engine.ts` | Stage 1. Gemini watches the video by URL (`fps 0.2`, low media resolution) with a JSON schema, trying `GEMINI_MODEL` then `GEMINI_FALLBACK_MODEL` (`modelChain`). Over a whole video the model's clock is stretched by a constant factor (×1.6 on a 17-min vlog in testing), so `calibrate` rescales every timestamp with the real length from YouTube (±15 s left). `refineCut` then makes one short pass per clip that will be published, over a window of ~2 min where the clock is exact, and fixes start and end to ±3 s. Filters clips to 45-140 s and sorts by score. |
+| `lib/captions.ts` | YouTube auto-captions as the real timeline: `fetchCaptions` (best effort; YouTube often serves nothing to servers), `snapToCaptions` anchors each segment to the second its opening line is spoken. Pure matching functions; tested. |
 | `lib/agents.ts` | The planner: which candidates become clips, order and angle. Falls back to score order if OpenAI fails. |
 | `lib/copy.ts` | Stage 2. `writeCopy` (OpenAI, Structured Outputs) → `findProblems` (code gates) → one retry → `buildCaption` (code assembles claim + CTA + hashtags). `quoteIsReal` is the last line of defence against invented quotes. |
 | `lib/engine.ts` | The copy system prompt and hashtag ban lists. Brand-neutral; brand comes from config. |
@@ -55,10 +56,15 @@ YouTube RSS ──▶ scanChannel ──▶ Video(pending)
 
 ## Data model
 
-- **Video**: `videoId`, `title`, `publishedAt`, `status` (`pending → analyzing → analyzed | error | ignored`), `analysis`, `scheduled.clips`, `planNote`.
+- **Video**: `videoId`, `title`, `publishedAt`, `durationSec`, `status` (`pending → analyzing → analyzed | error | ignored`), `analysis` (with `modelo`, `duracion_total`, `escala`), `scheduled.clips`, `planNote`.
+- **ClipCandidate / ClipItem** carry `precision`: `subtitulos` (anchored to captions), `recorte` (refined by the short pass) or none (calibrated only, ±15 s; the UI says so and shows the opening line to search for).
 - **Item** (a clip on a date): `videoId`, `status` (`drafting → planned → published`), `draft` (reserved candidate + angle) until written, then `clip: ClipItem` (cut, captions, pieces, warnings, transcript), `publishedOn[]`, `posts` (URL per network), `metrics` per network.
 - **PublishedPost**: what is actually online, matched or not, with a per-day `history` of metrics. This is where the model's observations come from.
 - **Settings**: `styleGuide`.
+
+## Gemini quota
+
+The free tier allows 20 requests per day per model. One video costs 1 long pass plus one short pass per published clip (5 by default), so a free key covers about three videos a day. `gemini-flash-lite-latest` is the fallback because in testing it was the only free model that ingested YouTube video without 503s.
 
 ## Time budget
 

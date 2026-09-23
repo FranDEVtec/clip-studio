@@ -472,7 +472,7 @@ function TodayCard({ item: it, video: ep, busy, onAct, onOpen }: { item: Item; v
         <h2 className="today-title" onClick={onOpen}>{title}</h2>
         {it.clip && (
           <div className="today-meta">
-            Corte {fmtTime(it.clip.inicio)} → {fmtTime(it.clip.fin)} ({Math.round(it.clip.fin - it.clip.inicio)} s)
+            Corte {it.clip.precision ? "" : "≈ "}{fmtTime(it.clip.inicio)} → {fmtTime(it.clip.fin)} ({Math.round(it.clip.fin - it.clip.inicio)} s)
             {ep && (
               <>
                 {" · "}

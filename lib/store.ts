@@ -30,11 +30,23 @@ export type ClipCandidate = {
   /** Índice del eje del video al que pertenece. */
   eje?: number;
   puntaje: number;
+  /**
+   * Qué tan confiables son inicio y fin: "subtitulos" (anclados a la línea de
+   * tiempo real de YouTube), "recorte" (afinados con un segundo pase de Gemini
+   * sobre la ventana del tramo) o nada (sólo calibrados: ±15 s).
+   */
+  precision?: "subtitulos" | "recorte";
 };
 
 export type Eje = { nombre: string; idea: string; segundo: number };
 
 export type VideoAnalysis = {
+  /** Modelo de Gemini que hizo el análisis (el configurado o el fallback). */
+  modelo?: string;
+  /** Duración total del video según el modelo, en segundos. Sirve para calibrar los tiempos. */
+  duracion_total?: number;
+  /** Factor aplicado a los tiempos del modelo para que coincidan con la duración real (1 = sin corrección). */
+  escala?: number;
   tema: string;
   tesis: string;
   /** Los 3-5 temas que el video desarrolla de verdad. */
@@ -47,6 +59,8 @@ export type Video = {
   url: string;
   title: string;
   publishedAt: string; // ISO
+  /** Duración real en segundos, leída de la página de YouTube. */
+  durationSec?: number;
   /** "ignored": estaba en el RSS al primer escaneo pero es viejo o corto; se analiza sólo a pedido. */
   status: "pending" | "analyzing" | "analyzed" | "error" | "ignored";
   error?: string;
@@ -61,6 +75,10 @@ export type Video = {
 export type ClipItem = {
   inicio: number;
   fin: number;
+  /** Ver ClipCandidate.precision. Sin esto, el corte es aproximado y el editor busca el gancho. */
+  precision?: "subtitulos" | "recorte";
+  /** Primera frase del tramo tal cual se dice: es lo que el editor busca para cortar. */
+  gancho?: string;
   tituloInterno: string;
   /** Caption de Instagram: claim + CTA fijo + hashtags. */
   caption: string;

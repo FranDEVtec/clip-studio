@@ -99,7 +99,8 @@ export function ItemDetail({
   const pack = it.clip
     ? [
         `${ep?.title ?? ""}`,
-        `CORTE: ${fmtTime(it.clip.inicio)} → ${fmtTime(it.clip.fin)} (${Math.round(it.clip.fin - it.clip.inicio)} s)${ep ? ` · ${ep.url}&t=${Math.floor(it.clip.inicio)}s` : ""}`,
+        `CORTE: ${fmtTime(it.clip.inicio)} → ${fmtTime(it.clip.fin)} (${Math.round(it.clip.fin - it.clip.inicio)} s)${it.clip.precision ? "" : " · aproximado, buscá el gancho"}${ep ? ` · ${ep.url}&t=${Math.floor(it.clip.inicio)}s` : ""}`,
+        ...(it.clip.gancho ? [`EMPIEZA CON: «${it.clip.gancho}»`] : []),
         `PUBLICAR: ${it.date} ${it.time} hs`,
         "",
         ...(it.clip.pieces.hook_edicion ? [`TITULAR EN PANTALLA: ${it.clip.pieces.hook_edicion}`, ""] : []),
@@ -179,6 +180,14 @@ export function ItemDetail({
                 )}
               </div>
               <div className="dim small">{it.clip.tituloInterno}</div>
+              {it.clip.gancho && <div className="dim small">Empieza con: «{it.clip.gancho}»</div>}
+              <div className="dim small">
+                {it.clip.precision === "subtitulos"
+                  ? "Corte al segundo: anclado a los subtítulos de YouTube."
+                  : it.clip.precision === "recorte"
+                    ? "Corte verificado con un segundo pase del modelo (±2 s)."
+                    : "Corte aproximado (±15 s): abrí el link y buscá la frase con la que empieza."}
+              </div>
               {it.clip.angulo && <div className="dim small">Ángulo: {it.clip.angulo}</div>}
               {(() => {
                 const dur = Math.round(it.clip!.fin - it.clip!.inicio);

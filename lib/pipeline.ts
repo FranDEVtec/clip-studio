@@ -5,7 +5,8 @@
 
 import type { Extraction } from "@/lib/engine";
 import { buildCaption, writeCopy } from "@/lib/copy";
-import { analyzeVideo } from "@/lib/video-engine";
+import { analyzeVideo, refineCut } from "@/lib/video-engine";
+import { fetchCaptions, snapToCaptions } from "@/lib/captions";
 import { CLIPS_PER_VIDEO, FRESH_DAYS, VIDEO_MIN_SEC } from "@/lib/config";
 import { cederLaSemana, faltantesDeLaSemana, localDate, nextFreeSlots, PUBLISH_TIME, videoWeekStart, weekSlots } from "@/lib/planner";
 import { logLine, saveState, type ClipCandidate, type ClipItem, type Item, type State, type Video } from "@/lib/store";
@@ -37,7 +38,7 @@ export async function scanChannel(state: State): Promise<number> {
     // (cuesta ~1 h de video de Gemini cada uno). Quedan como "ignored" para
     // analizarlos a pedido desde la UI.
     const status: Video["status"] = corto || (firstRun && !fresh) ? "ignored" : "pending";
-    state.videos.push({ ...v, status });
+    state.videos.push({ ...v, status, durationSec: len ?? undefined });
     if (status === "pending") queued++;
     logLine(state, `Video nuevo en el canal: "${v.title}" (${v.videoId}) → ${status}${corto ? ` (dura ${Math.round((len as number) / 60)} min: es un Short o un corte, no se clipea)` : ""}`);
   }
@@ -62,7 +63,8 @@ export async function addVideoByUrl(state: State, input: string, opts: { saleEl?
     return existing;
   }
   const title = (await fetchOEmbedTitle(videoId)) ?? videoId;
-  const video: Video = { videoId, url: `https://www.youtube.com/watch?v=${videoId}`, title, publishedAt, status: "pending" };
+  const len = await fetchVideoLengthSec(videoId);
+  const video: Video = { videoId, url: `https://www.youtube.com/watch?v=${videoId}`, title, publishedAt, status: "pending", durationSec: len ?? undefined };
   state.videos.push(video);
   logLine(state, `Video agregado a mano: "${title}" (${videoId})`);
   return video;
@@ -83,11 +85,16 @@ async function runAnalysis(state: State, video: Video): Promise<boolean> {
   video.error = undefined;
   try {
     logLine(state, `Analizando con Gemini: "${video.title}"…`);
-    const analysis = await analyzeVideo(video.url, video.title);
+    if (!video.durationSec) video.durationSec = (await fetchVideoLengthSec(video.videoId)) ?? undefined;
+    const raw = await analyzeVideo(video.url, video.title, video.durationSec);
+    // Los subtítulos de YouTube son la línea de tiempo real: anclan cada corte al borde de la frase.
+    const { analysis, anclados } = snapToCaptions(raw, await fetchCaptions(video.videoId));
     video.analysis = analysis;
     video.analyzedAt = new Date().toISOString();
     video.status = "analyzed";
-    logLine(state, `Listo: ${analysis.clips.length} tramos candidatos en ${analysis.ejes?.length ?? 0} ejes.`);
+    const escala = analysis.escala && analysis.escala !== 1 ? ` · tiempos calibrados ×${analysis.escala.toFixed(2)}` : "";
+    const ancla = anclados ? ` · ${anclados}/${analysis.clips.length} anclados a los subtítulos` : " · sin subtítulos: cortes según el modelo";
+    logLine(state, `Listo: ${analysis.clips.length} tramos candidatos en ${analysis.ejes?.length ?? 0} ejes (${analysis.modelo ?? "gemini"}${escala}${ancla}).`);
     return true;
   } catch (err) {
     video.status = "error";
@@ -220,6 +227,19 @@ export async function writePendingItems(state: State, max = 2): Promise<{ remain
 }
 
 export async function buildClipItem(cand: ClipCandidate, video: Video, state: State, angulo?: string): Promise<ClipItem> {
+  // Los tiempos del pase largo son aproximados salvo que los subtítulos los hayan
+  // anclado. Antes de redactar, un segundo pase corto afina el corte (una llamada).
+  if (!cand.precision) {
+    const fino = await refineCut(video.url, cand, video.durationSec);
+    if (fino) {
+      logLine(state, `Corte afinado: ${fmtTime(cand.inicio)}–${fmtTime(cand.fin)} → ${fmtTime(fino.inicio)}–${fmtTime(fino.fin)} ("${cand.titulo}").`);
+      cand.inicio = fino.inicio;
+      cand.fin = fino.fin;
+      cand.precision = "recorte";
+    } else {
+      logLine(state, `No pude afinar el corte de "${cand.titulo}": queda aproximado (±15 s); el editor busca el gancho.`);
+    }
+  }
   const ex: Extraction = { titulo: cand.titulo, transcripcion: cand.transcripcion, tema: cand.tema, citas: cand.citas };
   const angleRule = angulo ? `\n\n# ÁNGULO PLANIFICADO PARA ESTE CLIP\n${angulo}` : "";
   const a = await writeCopy(
@@ -231,6 +251,8 @@ export async function buildClipItem(cand: ClipCandidate, video: Video, state: St
   return {
     inicio: cand.inicio,
     fin: cand.fin,
+    precision: cand.precision,
+    gancho: cand.gancho || undefined,
     tituloInterno: cand.titulo,
     caption: buildCaption(a.pieces, "instagram"),
     captionTikTok: buildCaption(a.pieces, "tiktok"),
