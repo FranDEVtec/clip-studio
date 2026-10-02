@@ -15,6 +15,7 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
+      - run: npm run typecheck
       - run: npm test
       # `next build` incluye el type check y no necesita ninguna variable de entorno.
       - run: npm run build

@@ -16,7 +16,7 @@
     "build": "next build",
     "start": "next start",
     "typecheck": "tsc --noEmit",
-    "test": "tsx lib/planner.test.ts && tsx lib/copy.test.ts && tsx lib/stats.test.ts && tsx lib/metrics-sync.test.ts && tsx lib/captions.test.ts",
+    "test": "tsx lib/planner.test.ts && tsx lib/copy.test.ts && tsx lib/stats.test.ts && tsx lib/metrics-sync.test.ts && tsx lib/captions.test.ts && tsx lib/engine.test.ts",
     "setup": "tsx scripts/setup.mts",
     "push-env": "tsx scripts/push-env.mts"
   },
