@@ -53,7 +53,8 @@ export const PAY_CURRENCY = env("PAY_CURRENCY", "ARS").toUpperCase();
 export const PAY_URL = env("PAY_URL");
 export const PAY_CONFIGURED = Boolean(PAY_URL) || Boolean(process.env.MP_ACCESS_TOKEN && PAY_PRICE > 0);
 /** Adónde escribe la gente después de pagar (o si el pago no está configurado). */
-export const CONTACT_URL = env("NEXT_PUBLIC_CONTACT_URL", "https://instagram.com/franbottaroo");
+// Sin NEXT_PUBLIC_CONTACT_URL, el contacto cae en los issues del repo (nunca en la cuenta de otra persona).
+export const CONTACT_URL = env("NEXT_PUBLIC_CONTACT_URL", `${REPO_URL}/issues`);
 
 /** Lo que la UI puede saber de la configuración. Nunca incluye secretos. */
 export function publicConfig() {
