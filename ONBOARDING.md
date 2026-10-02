@@ -78,7 +78,11 @@ npx vercel --prod                     # deploy
 
 Si `vercel integration add neon` pide elegir plan o región, elegí el gratis y la región más cercana. Si la persona prefiere otro Postgres, poné su `DATABASE_URL` en `.env.local` antes de `push-env`.
 
-Para correr también en local: `npx vercel env pull .env.local` trae el `DATABASE_URL` de Neon y `npm run dev` levanta la app en `http://localhost:3000`.
+`push-env` necesita `.env.local` (paso 3) y la carpeta linkeada (`npx vercel link`); si falta alguno, frena y dice cuál.
+
+Para correr también en local: `npx vercel env pull .env.local` trae el `DATABASE_URL` de Neon y `npm run dev` levanta la app en `http://localhost:3000`. Ojo: `env pull` **reemplaza** `.env.local` por lo que hay en Vercel; como `push-env` ya subió todo, no se pierde nada, pero hacelo después de `push-env`, nunca antes. Sin `DATABASE_URL` la app abre la pantalla de acceso pero la API responde con un error que dice exactamente eso.
+
+`npm install` puede mostrar avisos de `npm audit` (por ejemplo de `postcss` dentro de `next`). No bloquean la instalación; no corras `npm audit fix --force`, que salta a una versión mayor de Next.
 
 ## 5. Verificar
 

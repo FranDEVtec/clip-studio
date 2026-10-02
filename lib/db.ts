@@ -25,7 +25,11 @@ let cached: Sql | undefined;
 export function sql(): Sql {
   if (!cached) {
     const url = process.env.DATABASE_URL;
-    if (!url) throw new Error("Falta DATABASE_URL");
+    if (!url) {
+      throw new Error(
+        "Falta DATABASE_URL. En Vercel: `npx vercel integration add neon`; en local: `npx vercel env pull .env.local` o poné la URL de cualquier Postgres 14+ en .env.local (ONBOARDING.md, paso 4).",
+      );
+    }
     cached = /neon\.tech/.test(url) ? neonClient(url) : pgClient(url);
   }
   return cached;

@@ -8,11 +8,19 @@
 // valor por stdin, así ninguna key pasa por la línea de comandos ni por el
 // historial de la shell. Las variables vacías se saltean.
 
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { spawnSync } from "node:child_process";
 
 const target = process.argv[2] ?? "production";
 const file = process.argv[3] ?? ".env.local";
+if (!existsSync(file)) {
+  console.error(`✗ No existe ${file}. Corré primero \`npm run setup\` (ONBOARDING.md, paso 3).`);
+  process.exit(1);
+}
+if (!existsSync(".vercel/project.json")) {
+  console.error("✗ Esta carpeta no está linkeada a un proyecto de Vercel. Corré `npx vercel login` y `npx vercel link` (ONBOARDING.md, paso 4).");
+  process.exit(1);
+}
 const text = readFileSync(file, "utf8");
 let n = 0;
 for (const raw of text.split("\n")) {
@@ -25,7 +33,9 @@ for (const raw of text.split("\n")) {
   if (!value) continue;
   const r = spawnSync("npx", ["vercel", "env", "add", key, target, "--force"], { input: value, encoding: "utf8" });
   if (r.status !== 0) {
-    console.error(`✗ ${key}: ${(r.stderr || r.stdout).trim().split("\n").slice(-1)[0]}`);
+    // La última línea del CLI suele ser el banner de versión: se muestra la primera que dice "Error".
+    const lines = `${r.stderr}\n${r.stdout}`.split("\n").map((l) => l.trim()).filter(Boolean);
+    console.error(`✗ ${key}: ${lines.find((l) => /error/i.test(l)) ?? lines.at(-1) ?? "vercel env add falló"}`);
     process.exitCode = 1;
   } else {
     console.log(`✓ ${key}`);
