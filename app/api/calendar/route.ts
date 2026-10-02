@@ -28,8 +28,13 @@ const ok = (request: Request) => isAuthorized(request);
 
 export async function GET(request: Request) {
   if (!(await ok(request))) return NextResponse.json({ error: "No autorizado" }, { status: 401 });
-  const state = await loadState();
-  return NextResponse.json(payload(state));
+  try {
+    const state = await loadState();
+    return NextResponse.json(payload(state));
+  } catch (err) {
+    // Sin esto, una base mal configurada llega al navegador como un 500 vacío.
+    return NextResponse.json({ error: err instanceof Error ? err.message : String(err) }, { status: 500 });
+  }
 }
 
 /** Lo que la UI necesita además del State: configuración pública, fuentes de métricas y el modelo. */
